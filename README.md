@@ -1,5 +1,8 @@
 # coordgeo
 
+[![CircleCI](https://dl.circleci.com/status-badge/img/gh/hkneiding/coordgeo/tree/main.svg?style=svg)](https://dl.circleci.com/status-badge/redirect/gh/hkneiding/coordgeo/tree/main)
+[![codecov](https://codecov.io/gh/hkneiding/coordgeo/graph/badge.svg?token=JD5J1NX268)](https://codecov.io/gh/hkneiding/coordgeo)
+
 A lightweight Python package for identifying the **coordination geometry**
 of **mononuclear metal complexes** from an `.xyz` file.
 
