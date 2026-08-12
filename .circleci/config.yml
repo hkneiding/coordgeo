@@ -1,8 +1,5 @@
 version: 2.1
 
-orbs:
-  codecov: codecov/codecov@4.1.0
-
 jobs:
   test:
     parameters:
@@ -36,8 +33,12 @@ jobs:
       - run:
           name: Run tests with coverage
           command: pytest tests/ --cov=coordgeo --cov-report=xml
-      - codecov/upload:
-          file: coverage.xml
+      - run:
+          name: Upload coverage to Codecov
+          command: |
+            curl -Os https://cli.codecov.io/latest/linux/codecov
+            chmod +x codecov
+            ./codecov upload-process -t "$CODECOV_TOKEN" -f coverage.xml
 
 workflows:
   test:
