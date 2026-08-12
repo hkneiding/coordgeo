@@ -18,7 +18,7 @@ dependencies = [
 ]
 
 [project.urls]
-Repository = "https://github.com/<your-username>/coordgeo"
+Repository = "https://github.com/hkneiding/coordgeo"
 
 [project.scripts]
 coordgeo = "coordgeo.cli:main"
