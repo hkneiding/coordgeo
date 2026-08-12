@@ -17,6 +17,12 @@ dependencies = [
     "scipy>=1.7",
 ]
 
+[project.optional-dependencies]
+# Only needed to construct the ase.Atoms objects passed to analyze();
+# coordgeo itself never imports ase (see io.structure_from_ase_atoms).
+ase = ["ase>=3.22"]
+test = ["pytest", "ase>=3.22"]
+
 [project.urls]
 Repository = "https://github.com/hkneiding/coordgeo"
 

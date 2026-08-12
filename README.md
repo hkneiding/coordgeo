@@ -89,12 +89,28 @@ for match in result.matches:
 print(result.summary())                # human-readable report
 ```
 
+`analyze()` also accepts an in-memory [ASE](https://wiki.fysik.dtu.dk/ase/)
+`Atoms` object instead of a file path -- handy if you already have a
+structure loaded and don't want to round-trip it through a file. This is
+Python-API only; the CLI only ever has a file path to work with.
+
+```python
+from ase import Atoms
+
+atoms = Atoms(...)
+result = coordgeo.analyze(atoms, cutoff=2.6)
+```
+
+`ase` is not a hard dependency of coordgeo -- install it yourself (or via
+the `ase` extra: `pip install "coordgeo[ase]"`) if you want to use this.
+
 Lower-level building blocks are also available:
 
 ```python
-from coordgeo import load_xyz, find_metal_center, get_neighbors, identify_geometry
+from coordgeo import load_xyz, structure_from_ase_atoms, find_metal_center, get_neighbors, identify_geometry
 
 structure = load_xyz("complex.xyz")
+# structure = structure_from_ase_atoms(atoms)             # or from an ase.Atoms object
 metal_idx = find_metal_center(structure)                 # auto-detect
 neighbors = get_neighbors(structure, metal_idx)           # auto cutoff from covalent radii
 

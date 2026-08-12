@@ -208,3 +208,46 @@ def test_identify_geometry_seed_is_reproducible_for_large_cn():
 
     assert [m.measure for m in matches_a] == [m.measure for m in matches_b]
     assert [m.name for m in matches_a] == [m.name for m in matches_b]
+
+
+def _octahedral_ase_atoms():
+    ase = pytest.importorskip("ase")
+    positions = [
+        [0, 0, 0], [2.1, 0, 0], [-2.1, 0, 0], [0, 2.1, 0], [0, -2.1, 0], [0, 0, 2.1], [0, 0, -2.1],
+    ]
+    symbols = ["Fe", "N", "N", "N", "N", "N", "N"]
+    return ase.Atoms(symbols=symbols, positions=positions)
+
+
+def test_analyze_accepts_ase_atoms_with_fixed_cutoff():
+    atoms = _octahedral_ase_atoms()
+    result = coordgeo.analyze(atoms, cutoff=2.5)
+    assert result.coordination_number == 6
+    assert result.best_match().name == "octahedral"
+    assert result.best_match().measure < 1e-6
+
+
+def test_analyze_accepts_ase_atoms_with_auto_cutoff():
+    atoms = _octahedral_ase_atoms()
+    result = coordgeo.analyze(atoms)
+    assert result.coordination_number == 6
+    assert result.best_match().name == "octahedral"
+
+
+def test_structure_from_ase_atoms_low_level():
+    atoms = _octahedral_ase_atoms()
+    structure = coordgeo.structure_from_ase_atoms(atoms)
+    assert len(structure) == 7
+    assert structure.symbols() == ["Fe", "N", "N", "N", "N", "N", "N"]
+
+
+def test_analyze_accepts_pathlib_path():
+    from pathlib import Path
+
+    result = coordgeo.analyze(Path(EXAMPLES) / "octahedral_example.xyz", cutoff=2.5)
+    assert result.coordination_number == 6
+
+
+def test_analyze_rejects_unsupported_source_type():
+    with pytest.raises(TypeError):
+        coordgeo.analyze(42, cutoff=2.5)

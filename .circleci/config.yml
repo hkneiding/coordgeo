@@ -13,8 +13,7 @@ jobs:
           name: Install coordgeo and test dependencies
           command: |
             pip install --upgrade pip
-            pip install -e .
-            pip install pytest
+            pip install -e ".[test]"
       - run:
           name: Run tests
           command: pytest tests/ -v
@@ -28,8 +27,7 @@ jobs:
           name: Install coordgeo and test dependencies
           command: |
             pip install --upgrade pip
-            pip install -e .
-            pip install pytest pytest-cov
+            pip install -e ".[test]" pytest-cov
       - run:
           name: Run tests with coverage
           command: pytest tests/ --cov=coordgeo --cov-report=xml

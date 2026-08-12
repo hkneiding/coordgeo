@@ -1,16 +1,20 @@
 """Top-level orchestration for coordination geometry identification."""
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional, Union
 
 import numpy as np
 
 from .elements import is_metal
-from .io import Structure, load_xyz
+from .io import Structure, load_xyz, structure_from_ase_atoms
 from .matcher import GeometryMatch, identify_geometry
 from .geometries import MAX_SUPPORTED_CN, MIN_SUPPORTED_CN
 from .radii import COVALENT_RADII, covalent_radius
+
+if TYPE_CHECKING:
+    from ase import Atoms as AseAtoms
 
 # Extra distance (Angstrom) added to the summed covalent radii of the metal
 # and a candidate neighbor when `cutoff` is not given explicitly. 0.4 A is a
@@ -268,19 +272,22 @@ def get_neighbors(
 
 
 def analyze(
-    path: str,
+    source: Union[str, os.PathLike, "AseAtoms"],
     cutoff: Optional[float] = None,
     metal_symbol: Optional[str] = None,
     metal_index: Optional[int] = None,
     tolerance: float = DEFAULT_TOLERANCE,
     seed: Optional[int] = None,
 ) -> AnalysisResult:
-    """Load an xyz file, find the metal center, its neighbors, and rank candidate geometries.
+    """Load a structure, find the metal center, its neighbors, and rank candidate geometries.
 
     Parameters
     ----------
-    path : str
-        Path to a .xyz file describing a single (mononuclear) metal complex.
+    source : str, os.PathLike, or ase.Atoms
+        Path to a .xyz file describing a single (mononuclear) metal
+        complex, or an in-memory `ase.Atoms` object (Python API only --
+        there is no way to pass one from the CLI, which only ever has a
+        file path from argv).
     cutoff : optional
         Fixed cutoff radius (Angstrom) used to decide which atoms are
         coordinating neighbors of the metal center. If omitted (the
@@ -313,10 +320,17 @@ def analyze(
         relevant atom (see `get_neighbors`); if fewer than 2 neighbors are
         found; or if the coordination number found is outside the
         supported range (MIN_SUPPORTED_CN-MAX_SUPPORTED_CN).
+    TypeError
+        If `source` is neither a path nor an ase.Atoms-like object (see
+        `structure_from_ase_atoms`).
     OSError
-        If `path` doesn't exist or can't be opened (see `load_xyz`).
+        If `source` is a path that doesn't exist or can't be opened (see
+        `load_xyz`).
     """
-    structure = load_xyz(path)
+    if isinstance(source, (str, os.PathLike)):
+        structure = load_xyz(source)
+    else:
+        structure = structure_from_ase_atoms(source)
     m_idx = find_metal_center(structure, metal_symbol=metal_symbol, metal_index=metal_index)
     neighbors = get_neighbors(structure, m_idx, cutoff=cutoff, tolerance=tolerance)
 

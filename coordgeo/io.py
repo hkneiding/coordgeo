@@ -1,8 +1,9 @@
 """Minimal .xyz file reading."""
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Union
 
 import numpy as np
 
@@ -50,7 +51,7 @@ class Structure:
         return [a.symbol for a in self.atoms]
 
 
-def load_xyz(path: str) -> Structure:
+def load_xyz(path: Union[str, os.PathLike]) -> Structure:
     """Parse a standard .xyz file.
 
     Format::
@@ -62,7 +63,7 @@ def load_xyz(path: str) -> Structure:
 
     Parameters
     ----------
-    path : str
+    path : str or os.PathLike
         Path to the .xyz file to read.
 
     Returns
@@ -116,3 +117,43 @@ def load_xyz(path: str) -> Structure:
         atoms.append(Atom(symbol=symbol, coord=xyz, index=i))
 
     return Structure(atoms=atoms, comment=comment)
+
+
+def structure_from_ase_atoms(atoms) -> Structure:
+    """Convert an ase.Atoms-like object into a Structure.
+
+    Duck-typed on purpose: any object exposing `get_chemical_symbols()`
+    and `get_positions()` (as `ase.Atoms` does) works, so coordgeo has no
+    hard runtime dependency on `ase` itself -- only whoever constructs the
+    `atoms` object needs it installed.
+
+    Parameters
+    ----------
+    atoms : ase.Atoms
+        Structure to convert.
+
+    Returns
+    -------
+    Structure
+        Atoms in `atoms`'s iteration order (0-based `index`), with an
+        empty comment.
+
+    Raises
+    ------
+    TypeError
+        If `atoms` doesn't expose `get_chemical_symbols()`/`get_positions()`.
+    """
+    get_symbols = getattr(atoms, "get_chemical_symbols", None)
+    get_positions = getattr(atoms, "get_positions", None)
+    if get_symbols is None or get_positions is None:
+        raise TypeError(
+            f"Expected a file path or an ase.Atoms object, got {type(atoms).__name__!r} "
+            f"instead, which doesn't look like either (missing "
+            f"get_chemical_symbols()/get_positions())."
+        )
+
+    atom_list: List[Atom] = [
+        Atom(symbol=symbol, coord=np.asarray(coord, dtype=float), index=i)
+        for i, (symbol, coord) in enumerate(zip(get_symbols(), get_positions()))
+    ]
+    return Structure(atoms=atom_list, comment="")
