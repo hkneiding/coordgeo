@@ -1,5 +1,8 @@
 version: 2.1
 
+orbs:
+  codecov: codecov/codecov@4.1.0
+
 jobs:
   test:
     parameters:
@@ -19,6 +22,23 @@ jobs:
           name: Run tests
           command: pytest tests/ -v
 
+  coverage:
+    docker:
+      - image: cimg/python:3.12
+    steps:
+      - checkout
+      - run:
+          name: Install coordgeo and test dependencies
+          command: |
+            pip install --upgrade pip
+            pip install -e .
+            pip install pytest pytest-cov
+      - run:
+          name: Run tests with coverage
+          command: pytest tests/ --cov=coordgeo --cov-report=xml
+      - codecov/upload:
+          file: coverage.xml
+
 workflows:
   test:
     jobs:
@@ -27,3 +47,6 @@ workflows:
             parameters:
               # Covers the requires-python floor (3.8) plus recent versions.
               python_version: ["3.8", "3.11", "3.12"]
+      # No `requires:` on either job, so CircleCI runs `test` (the matrix)
+      # and `coverage` in parallel rather than sequentially.
+      - coverage
