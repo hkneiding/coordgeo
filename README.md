@@ -116,7 +116,8 @@ Any atom within `cutoff` of the metal center is treated
 as a coordinating neighbor. **By default** (`cutoff` not given), the
 cutoff is computed per neighbor as `covalent_radius(metal) +
 covalent_radius(neighbor) + tolerance` (tolerance defaults to 0.4 A),
-using the tabulated radii in `coordgeo/radii.py` — the same kind of
+using the tabulated radii in `coordgeo/radii.py` (Cordero et al., see
+[References](#references)) — the same kind of
 sum-of-covalent-radii-plus-tolerance heuristic used by OpenBabel/pymatgen.
 If an atom close enough to matter has no tabulated radius, a `ValueError`
 is raised rather than guessing. **Pass `cutoff` explicitly** instead for a
@@ -168,3 +169,8 @@ SHAPE program:
 A related, independently developed web application built on a similar approach:
 
 - Castro Silva Junior, H. *Q-Shape: Quantitative Shape Analyzer*, v1.5.0; Zenodo, **2026**. https://doi.org/10.5281/zenodo.18209621
+
+The tabulated covalent radii used for the automatic cutoff (see "How the
+cutoff radius works" above) are from:
+
+- Cordero, B.; Gómez, V.; Platero-Prats, A. E.; Revés, M.; Echeverría, J.; Cremades, E.; Barragán, F.; Alvarez, S. *Covalent Radii Revisited.* Dalton Trans. **2008**, 2832–2838.
