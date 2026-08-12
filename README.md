@@ -13,11 +13,12 @@ CN (e.g. CN=4 -> tetrahedral vs. square planar vs. seesaw) by a
 **continuous shape measure (CShM)**: 0 = perfect match, larger = worse.
 Supported CN: **2-12** (see `coordgeo/geometries.py` — easy to extend).
 
-The shape-matching method mirrors the SHAPE program / continuous shape
-measures approach (see [References](#references)): normalize the real
-ligand positions and an idealized reference polyhedron to the same size,
-find the rotation and ligand-to-vertex assignment minimizing the summed
-squared deviation, and report the residual as a 0-100 measure. For CN <= 7
+The shape-matching method mirrors and reimplements the SHAPE program in
+Python, following the continuous shape measures formalism (see
+[References](#references)): normalize the real ligand positions and an
+idealized reference polyhedron to the same size, find the rotation and
+ligand-to-vertex assignment minimizing the summed squared deviation, and
+report the residual as a 0-100 measure. For CN <= 7
 this assignment is found by exact brute-force search over every
 permutation; above that an N! search is impractical, so a
 Hungarian-algorithm-based iterative closest point (ICP) search is used
@@ -29,7 +30,7 @@ instead (see `coordgeo/matcher.py`).
 pip install git+https://github.com/hkneiding/coordgeo.git
 ```
 
-Dependencies: `numpy`, `scipy` (the latter only for the CN > 7 search).
+Dependencies: `numpy`, `scipy`.
 
 ## Command line usage
 
@@ -111,7 +112,7 @@ metal atom is found — pass `metal_symbol=`/`metal_index=` to disambiguate.
 
 ## How the cutoff radius works
 
-Any atom (metal excluded) within `cutoff` of the metal center is treated
+Any atom within `cutoff` of the metal center is treated
 as a coordinating neighbor. **By default** (`cutoff` not given), the
 cutoff is computed per neighbor as `covalent_radius(metal) +
 covalent_radius(neighbor) + tolerance` (tolerance defaults to 0.4 A),
@@ -164,6 +165,6 @@ SHAPE program:
 - Alvarez, S.; Alemany, P.; Casanova, D.; Cirera, J.; Llunell, M.; Avnir, D. *Shape Maps and Polyhedral Interconversion Paths in Transition Metal Chemistry.* Coord. Chem. Rev. **2005**, 249, 1693–1708.
 - Llunell, M.; Casanova, D.; Cirera, J.; Alemany, P.; Alvarez, S. *SHAPE: Program for the Stereochemical Analysis of Molecular Fragments by Means of Continuous Shape Measures and Associated Tools*, v2.1; Universitat de Barcelona, 2013.
 
-`coordgeo` is an independent, lightweight reimplementation of this
-methodology and is not affiliated with or endorsed by the SHAPE program's
-authors.
+A related, independently developed web application built on a similar approach:
+
+- Castro Silva Junior, H. *Q-Shape: Quantitative Shape Analyzer*, v1.5.0; Zenodo, **2026**. https://doi.org/10.5281/zenodo.18209621
