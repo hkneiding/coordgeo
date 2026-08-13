@@ -30,6 +30,18 @@ DEFAULT_TOLERANCE = 0.4
 # in-range anyway.
 _MAX_KNOWN_RADIUS = max(COVALENT_RADII.values())
 
+# Multiplier applied to the pairwise (covalent_radius(metal) +
+# covalent_radius(atom) + tolerance) distance to get an absolute ceiling on
+# how far the `window` parameter of analyze() is allowed to reach when
+# *adding* atoms. Without this, a large enough window on a sparse structure
+# could pull in chemically implausible, far-away atoms just because they
+# happened to be the Nth-closest in the whole structure. 1.5x is generous
+# enough to explore genuinely stretched/borderline coordination, without
+# treating arbitrarily distant atoms as candidates. Not user-configurable;
+# adjust here if it needs tuning. Only constrains adding atoms -- removing
+# an already-included neighbor never needs this kind of sanity check.
+_WINDOW_MAX_DISTANCE_FACTOR = 1.5
+
 
 @dataclass
 class Neighbor:
@@ -46,6 +58,7 @@ class AnalysisResult:
     cutoff: Optional[float]
     neighbors: List[Neighbor]
     tolerance: float = DEFAULT_TOLERANCE
+    window: int = 0
     matches: List[GeometryMatch] = field(default_factory=list)
 
     @property
@@ -72,50 +85,42 @@ class AnalysisResult:
         return self.matches[0] if self.matches else None
 
     def summary(self, top_n: Optional[int] = None) -> str:
-        """Render a human-readable report of the analysis.
+        """Render the ranked candidate geometry table as a human-readable report.
 
         Parameters
         ----------
         top_n : int, optional
-            Only include the top `top_n` candidate geometries. Defaults to
-            showing every candidate for the coordination number found.
+            Only include the top `top_n` rows of the table. Defaults to
+            showing every candidate tested.
 
         Returns
         -------
         str
-            Multi-line report: metal center, cutoff (fixed or auto),
-            coordination number, each neighbor with its distance, and the
-            ranked candidate geometries (or a note that none are available
-            for this coordination number).
+            A header naming the metal center, followed by one row per
+            candidate geometry tested (across every coordination number in
+            the window, if any) with its CN and shape measure, sorted best
+            (lowest measure) first -- or a note that none are available if
+            `matches` is empty.
         """
-        lines = []
-        lines.append(
-            f"Metal center: {self.metal_symbol} (atom #{self.metal_index + 1} in xyz file)"
+        header = (
+            f"Candidate geometries for {self.metal_symbol} (atom #{self.metal_index + 1}) "
+            f"(lower shape measure = better match, 0 = perfect; sorted best first):"
         )
-        if self.cutoff is not None:
-            lines.append(f"Cutoff radius: {self.cutoff} Angstrom")
-        else:
-            lines.append(
-                f"Cutoff: auto (covalent radius of {self.metal_symbol} + covalent radius "
-                f"of each neighbor + {self.tolerance} Angstrom tolerance)"
-            )
-        lines.append(f"Coordination number (neighbors within cutoff): {self.coordination_number}")
-        lines.append("Neighbors:")
-        for n in self.neighbors:
-            lines.append(f"  {n.symbol:<3s} atom #{n.index + 1:<4d} distance = {n.distance:.3f} A")
-
+        lines = [header]
         if not self.matches:
             lines.append(
-                f"\nNo reference geometries available for coordination number "
+                f"  No reference geometries available for coordination number "
                 f"{self.coordination_number} (supported range: "
                 f"{MIN_SUPPORTED_CN}-{MAX_SUPPORTED_CN})."
             )
         else:
-            lines.append("\nCandidate geometries (lower shape measure = better match, 0 = perfect):")
             shown = self.matches if top_n is None else self.matches[:top_n]
             for m in shown:
                 marker = "  <-- best match" if m is self.matches[0] else ""
-                lines.append(f"  {m.name:<22s} shape measure = {m.measure:6.2f}{marker}")
+                lines.append(
+                    f"  CN={m.coordination_number:<3d} {m.name:<22s} "
+                    f"shape measure = {m.measure:6.2f}{marker}"
+                )
         return "\n".join(lines)
 
 
@@ -201,6 +206,33 @@ def find_metal_center(
     return candidates[0]
 
 
+def _all_neighbor_candidates(structure: Structure, metal_index: int) -> List[Neighbor]:
+    """List every atom other than the metal, with no cutoff filter applied.
+
+    Parameters
+    ----------
+    structure : Structure
+        Parsed structure containing the metal and its candidate neighbors.
+    metal_index : int
+        0-based index of the metal atom in `structure.atoms`.
+
+    Returns
+    -------
+    list of Neighbor
+        Every non-metal atom, sorted by ascending distance from the metal.
+    """
+    metal_coord = structure.atoms[metal_index].coord
+    candidates = []
+    for atom in structure.atoms:
+        if atom.index == metal_index:
+            continue
+        vec = atom.coord - metal_coord
+        dist = float(np.linalg.norm(vec))
+        candidates.append(Neighbor(symbol=atom.symbol, index=atom.index, distance=dist, vector=vec))
+    candidates.sort(key=lambda n: n.distance)
+    return candidates
+
+
 def get_neighbors(
     structure: Structure,
     metal_index: int,
@@ -243,7 +275,6 @@ def get_neighbors(
         enough to plausibly be a neighbor (see `covalent_radius`).
     """
     metal_symbol = structure.atoms[metal_index].symbol
-    metal_coord = structure.atoms[metal_index].coord
     metal_radius = covalent_radius(metal_symbol) if cutoff is None else None
     # Any atom farther than this is guaranteed out of range regardless of its
     # (possibly unlisted) element, so it never needs a covalent_radius lookup.
@@ -252,34 +283,47 @@ def get_neighbors(
     )
 
     neighbors = []
-    for atom in structure.atoms:
-        if atom.index == metal_index:
-            continue
-        vec = atom.coord - metal_coord
-        dist = float(np.linalg.norm(vec))
-
+    # Already sorted by distance (see _all_neighbor_candidates); filtering
+    # below preserves that order, so no re-sort is needed afterwards.
+    for candidate in _all_neighbor_candidates(structure, metal_index):
         if cutoff is not None:
             atom_cutoff = cutoff
-        elif dist > max_possible_auto_cutoff:
+        elif candidate.distance > max_possible_auto_cutoff:
             continue
         else:
-            atom_cutoff = metal_radius + covalent_radius(atom.symbol) + tolerance
+            atom_cutoff = metal_radius + covalent_radius(candidate.symbol) + tolerance
 
-        if dist <= atom_cutoff:
-            neighbors.append(Neighbor(symbol=atom.symbol, index=atom.index, distance=dist, vector=vec))
-    neighbors.sort(key=lambda n: n.distance)
+        if candidate.distance <= atom_cutoff:
+            neighbors.append(candidate)
     return neighbors
 
 
 def analyze(
     source: Union[str, os.PathLike, "AseAtoms"],
     cutoff: Optional[float] = None,
+    window: int = 0,
     metal_symbol: Optional[str] = None,
     metal_index: Optional[int] = None,
     tolerance: float = DEFAULT_TOLERANCE,
     seed: Optional[int] = None,
 ) -> AnalysisResult:
     """Load a structure, find the metal center, its neighbors, and rank candidate geometries.
+
+    A coordinating atom can sit right at the edge of the cutoff, making the
+    "true" coordination number ambiguous. With the default `window=0`,
+    this ranks reference geometries for exactly the cutoff-defined
+    neighbor set (the base CN), as normal. With `window > 0`, it
+    additionally considers shrinking that set by dropping up to `window`
+    of its furthest (most marginal) neighbors, and growing it by adding up
+    to `window` of the closest atoms that were just outside cutoff --
+    pooling the ranked candidate geometries from *every* coordination
+    number tested (base CN -/+ up to `window`) into one combined,
+    best-first `matches` list, so you can see whether the best match is
+    stable around the cutoff boundary or only holds for one exact CN.
+    This only raises if *none* of the coordination numbers tested (not
+    just the base one) turn out valid -- so a base CN that's itself too
+    small/large is still rescued if some CN within the window is
+    supported.
 
     Parameters
     ----------
@@ -293,13 +337,34 @@ def analyze(
         coordinating neighbors of the metal center. If omitted (the
         default), an automatic per-neighbor cutoff based on covalent radii
         is used instead: covalent_radius(metal) + covalent_radius(neighbor)
-        + tolerance.
+        + tolerance. Defines the base coordination number, around which
+        `window` (if given) explores.
+    window : int, default 0
+        How many neighbors to additionally consider adding/removing from
+        the cutoff boundary; 0 (the default) reproduces the original
+        single-CN behavior. Tests up to `2 * window + 1` coordination
+        numbers (base CN through base CN +/- window; fewer if the
+        structure doesn't have enough atoms in either direction, a
+        candidate atom is farther than a chemically plausible ceiling
+        (see _WINDOW_MAX_DISTANCE_FACTOR; only applies to adding atoms),
+        removing the furthest neighbor(s) wouldn't cross a genuine
+        distance gap (> `tolerance` from the kept "core"; only applies to
+        removing atoms -- this is what stops e.g. a uniformly distorted
+        octahedron from being mistaken for a vacant_octahedral just
+        because its 6th ligand is nominally furthest), or a candidate CN
+        falls outside the supported range -- those are simply omitted
+        from `matches`, without affecting the others).
     metal_symbol, metal_index : optional
         Explicitly select the metal center instead of relying on
         auto-detection. metal_index is 0-based.
     tolerance : float
-        Extra distance (Angstrom) added to the summed covalent radii when
-        `cutoff` is not given. Ignored if `cutoff` is given explicitly.
+        Extra distance (Angstrom) added to the summed covalent radii for
+        the base neighbor detection when `cutoff` is not given (ignored
+        for that part if `cutoff` is given explicitly). Also used by
+        `window` regardless of `cutoff` mode: as the minimum distance gap
+        required to justify removing a neighbor, and as part of the
+        ceiling on how far `window` may reach when adding one (see
+        `window` above).
     seed : optional
         Seed for the randomized ICP geometry search used for coordination
         numbers above matcher.EXACT_PERMUTATION_MAX_N (ignored for smaller
@@ -309,17 +374,20 @@ def analyze(
     Returns
     -------
     AnalysisResult
-        The metal center, its neighbors, and ranked candidate geometries
-        (`matches`, sorted best first).
+        The metal center, the base (window=0) neighbor list, and every
+        candidate geometry tested across the window, pooled into one
+        `matches` list sorted best (lowest measure) first regardless of
+        which coordination number each came from.
 
     Raises
     ------
     ValueError
-        If the metal center can't be resolved (see `find_metal_center`);
-        if `cutoff` is None and covalent radius data is missing for a
-        relevant atom (see `get_neighbors`); if fewer than 2 neighbors are
-        found; or if the coordination number found is outside the
-        supported range (MIN_SUPPORTED_CN-MAX_SUPPORTED_CN).
+        If `window` is negative; if the metal center can't be resolved
+        (see `find_metal_center`); if `cutoff` is None and covalent radius
+        data is missing for a relevant atom (see `get_neighbors`); or if
+        none of the coordination numbers tested (base CN -/+ up to
+        `window`) fall within the supported range
+        (MIN_SUPPORTED_CN-MAX_SUPPORTED_CN).
     TypeError
         If `source` is neither a path nor an ase.Atoms-like object (see
         `structure_from_ase_atoms`).
@@ -327,6 +395,9 @@ def analyze(
         If `source` is a path that doesn't exist or can't be opened (see
         `load_xyz`).
     """
+    if window < 0:
+        raise ValueError(f"window must be >= 0, got {window}.")
+
     if isinstance(source, (str, os.PathLike)):
         structure = load_xyz(source)
     else:
@@ -337,29 +408,90 @@ def analyze(
     cn = len(neighbors)
     cutoff_desc = f"{cutoff} A cutoff" if cutoff is not None else "automatic covalent-radius cutoff"
 
-    if cn < 2:
-        raise ValueError(
-            f"Only {cn} neighbor(s) found within the {cutoff_desc} of the metal "
-            f"center; need at least 2 to assess a coordination geometry. Try a "
-            f"larger cutoff (or a larger tolerance)."
-        )
-    if not (MIN_SUPPORTED_CN <= cn <= MAX_SUPPORTED_CN):
-        raise ValueError(
-            f"Coordination number {cn} (found within the {cutoff_desc}) is not "
-            f"supported; reference geometries are only available for CN "
-            f"{MIN_SUPPORTED_CN}-{MAX_SUPPORTED_CN}. Try a smaller cutoff/tolerance "
-            f"to reduce the number of detected neighbors, or extend "
-            f"coordgeo/geometries.py with templates for this CN."
-        )
+    # Atoms outside the cutoff, closest first -- candidates to add for
+    # window > 0, restricted to a chemically plausible distance (see
+    # _WINDOW_MAX_DISTANCE_FACTOR) regardless of whether `cutoff` is fixed
+    # or automatic. Any atom whose ceiling can't be established (metal or
+    # candidate element missing covalent radius data) is simply excluded
+    # from candidacy rather than raising.
+    excluded_candidates: List[Neighbor] = []
+    if window:
+        base_index_set = {n.index for n in neighbors}
+        try:
+            metal_radius_for_ceiling = covalent_radius(structure.atoms[m_idx].symbol)
+        except ValueError:
+            metal_radius_for_ceiling = None
+        if metal_radius_for_ceiling is not None:
+            for n in _all_neighbor_candidates(structure, m_idx):
+                if n.index in base_index_set:
+                    continue
+                try:
+                    atom_radius = covalent_radius(n.symbol)
+                except ValueError:
+                    continue
+                ceiling = _WINDOW_MAX_DISTANCE_FACTOR * (metal_radius_for_ceiling + atom_radius + tolerance)
+                if n.distance <= ceiling:
+                    excluded_candidates.append(n)
+            # _all_neighbor_candidates is sorted by distance and filtering
+            # preserves that order, so excluded_candidates is too.
 
-    ligand_points = np.array([n.vector for n in neighbors])
-    matches = identify_geometry(ligand_points, seed=seed)
+    tested_cns: List[int] = []
+    matches: List[GeometryMatch] = []
+    for delta in range(-window, window + 1):
+        if delta < 0:
+            n_remove = -delta
+            if n_remove > len(neighbors):
+                continue
+            keep = len(neighbors) - n_remove
+            if keep > 0:
+                # Only strip the n_remove furthest neighbors if there's a
+                # genuine distance gap separating them from the kept
+                # "core" -- otherwise they're not meaningfully different
+                # from the rest, and dropping them would just be gaming a
+                # smaller-CN template rather than reflecting a real
+                # non-coordinating outlier (see the "vacant_octahedral"
+                # false-positive this guards against).
+                boundary_gap = neighbors[keep].distance - neighbors[keep - 1].distance
+                if boundary_gap <= tolerance:
+                    continue
+            variant = neighbors[:keep]
+        elif delta > 0:
+            n_add = delta
+            if n_add > len(excluded_candidates):
+                continue
+            variant = sorted(neighbors + excluded_candidates[:n_add], key=lambda n: n.distance)
+        else:
+            variant = neighbors
+
+        variant_cn = len(variant)
+        tested_cns.append(variant_cn)
+        if variant_cn >= 2 and MIN_SUPPORTED_CN <= variant_cn <= MAX_SUPPORTED_CN:
+            ligand_points = np.array([n.vector for n in variant])
+            matches.extend(identify_geometry(ligand_points, seed=seed))
+
+    if not matches:
+        if window == 0:
+            cn_desc = f"Coordination number {cn}"
+        else:
+            cn_desc = (
+                f"None of the coordination numbers tested ({min(tested_cns)}-{max(tested_cns)}, "
+                f"base CN={cn} +/- window={window})"
+            )
+        raise ValueError(
+            f"{cn_desc} found within the {cutoff_desc} is not supported; reference "
+            f"geometries are only available for CN {MIN_SUPPORTED_CN}-{MAX_SUPPORTED_CN}. "
+            f"Try a different cutoff/tolerance"
+            f"{' or a larger window' if window else ''}, or extend "
+            f"coordgeo/geometries.py with templates for the CN you need."
+        )
+    matches.sort(key=lambda m: m.measure)
 
     return AnalysisResult(
         metal_symbol=structure.atoms[m_idx].symbol,
         metal_index=m_idx,
         cutoff=cutoff,
         tolerance=tolerance,
+        window=window,
         neighbors=neighbors,
         matches=matches,
     )

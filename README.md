@@ -6,23 +6,20 @@
 A lightweight Python package for identifying the **coordination geometry**
 of **mononuclear metal complexes** from an `.xyz` file.
 
-Given a structure, `coordgeo` auto-detects the metal center (or you specify
-it explicitly), finds its coordinating neighbors within a cutoff radius ->
-coordination number (CN), and ranks idealized reference geometries for that
-CN (e.g. CN=4 -> tetrahedral vs. square planar vs. seesaw) by a
-**continuous shape measure (CShM)**: 0 = perfect match, larger = worse.
-Supported CN: **2-12** (see `coordgeo/geometries.py` — easy to extend).
+Given a structure, `coordgeo` auto-detects the metal center, finds its
+coordinating neighbors within a cutoff radius -> coordination number (CN),
+and ranks idealized reference geometries for that CN (e.g. CN=4 ->
+tetrahedral vs. square planar vs. seesaw) by a **continuous shape measure
+(CShM)**: 0 = perfect match, larger = worse. Supported CN: **2-12**.
 
-The shape-matching method mirrors and reimplements the SHAPE program in
-Python, following the continuous shape measures formalism (see
-[References](#references)): normalize the real ligand positions and an
-idealized reference polyhedron to the same size, find the rotation and
-ligand-to-vertex assignment minimizing the summed squared deviation, and
-report the residual as a 0-100 measure. For CN <= 7
-this assignment is found by exact brute-force search over every
-permutation; above that an N! search is impractical, so a
-Hungarian-algorithm-based iterative closest point (ICP) search is used
-instead (see `coordgeo/matcher.py`).
+The method mirrors and reimplements the SHAPE program in Python, following
+the continuous shape measures formalism (see [References](#references)):
+normalize the ligand positions and an idealized reference polyhedron to the
+same size, find the rotation and ligand-to-vertex assignment minimizing the
+summed squared deviation, and report the residual as a 0-100 measure. CN <=
+7 uses exact brute-force search over every permutation; CN > 7 uses a
+Hungarian-algorithm-based iterative closest point (ICP) search instead,
+since N! is no longer tractable (see `coordgeo/matcher.py`).
 
 ## Install
 
@@ -39,35 +36,20 @@ coordgeo examples/octahedral_example.xyz
 ```
 
 ```
-Metal center: Fe (atom #1 in xyz file)
-Cutoff: auto (covalent radius of Fe + covalent radius of each neighbor + 0.4 Angstrom tolerance)
-Coordination number (neighbors within cutoff): 6
-Neighbors:
-  N   atom #2    distance = 2.100 A
-  N   atom #3    distance = 2.100 A
-  N   atom #4    distance = 2.100 A
-  N   atom #5    distance = 2.100 A
-  N   atom #6    distance = 2.100 A
-  N   atom #7    distance = 2.100 A
-
-Candidate geometries (lower shape measure = better match, 0 = perfect):
-  octahedral             shape measure =   0.00  <-- best match
-  trigonal_prismatic     shape measure =  17.43
-  pentagonal_pyramidal   shape measure =  31.54
-```
-
-Pass `--cutoff` for a fixed distance cutoff instead:
-
-```bash
-coordgeo examples/octahedral_example.xyz --cutoff 2.5
+Candidate geometries for Fe (atom #1) (lower shape measure = better match, 0 = perfect; sorted best first):
+  CN=6   octahedral             shape measure =   0.00  <-- best match
+  CN=6   trigonal_prismatic     shape measure =  17.43
+  CN=6   pentagonal_pyramidal   shape measure =  31.54
+  CN=6   hexagonal_planar       shape measure =  36.70
 ```
 
 Options:
 
-- `-c, --cutoff`: fixed cutoff radius in Angstrom. If omitted, an automatic covalent-radius-based cutoff is used instead (see below).
-- `--tolerance`: extra distance in Angstrom added to the summed covalent radii when `--cutoff` is not given (default: 0.4).
+- `-c, --cutoff`: fixed cutoff radius in Angstrom. If omitted, an automatic covalent-radius-based cutoff is used (see below).
+- `--tolerance`: extra distance in Angstrom added to the summed covalent radii when `--cutoff` is not given (default: 0.4); also used by `--window` (see below).
+- `--window N`: also consider adding/removing up to N neighbors around the cutoff boundary, pooling ranked candidates across every CN tested (default: 0). See [Exploring nearby coordination numbers](#exploring-nearby-coordination-numbers-window).
 - `--metal-symbol` / `--metal-index`: pick the metal center explicitly (by symbol or 1-based atom index) instead of auto-detecting it.
-- `--top N`: only show the top N candidate geometries.
+- `--top N`: only show the top N rows of the candidate geometry table.
 - `--seed N`: seed for the randomized search used at CN > 7, for reproducible results.
 
 ## Python API
@@ -76,7 +58,7 @@ Options:
 import coordgeo
 
 result = coordgeo.analyze("complex.xyz")  # cutoff auto-computed from covalent radii
-# result = coordgeo.analyze("complex.xyz", cutoff=2.6)   # fixed cutoff instead
+# result = coordgeo.analyze("complex.xyz", cutoff=2.6)    # fixed cutoff instead
 # result = coordgeo.analyze("complex.xyz", tolerance=0.6) # more permissive auto cutoff
 
 print(result.coordination_number)      # e.g. 4
@@ -84,25 +66,20 @@ print(result.best_match().name)        # e.g. "square_planar"
 print(result.best_match().measure)     # e.g. 0.05  (0 = perfect match)
 
 for match in result.matches:
-    print(match.name, match.measure)
+    print(match.coordination_number, match.name, match.measure)
 
 print(result.summary())                # human-readable report
 ```
 
 `analyze()` also accepts an in-memory [ASE](https://wiki.fysik.dtu.dk/ase/)
-`Atoms` object instead of a file path -- handy if you already have a
-structure loaded and don't want to round-trip it through a file. This is
-Python-API only; the CLI only ever has a file path to work with.
+`Atoms` object instead of a file path -- Python-API only, since the CLI
+only ever has a file path. `ase` is not a hard dependency; install it
+yourself, or via `pip install "coordgeo[ase]"`.
 
 ```python
 from ase import Atoms
-
-atoms = Atoms(...)
-result = coordgeo.analyze(atoms, cutoff=2.6)
+result = coordgeo.analyze(Atoms(...), cutoff=2.6)
 ```
-
-`ase` is not a hard dependency of coordgeo -- install it yourself (or via
-the `ase` extra: `pip install "coordgeo[ase]"`) if you want to use this.
 
 Lower-level building blocks are also available:
 
@@ -119,6 +96,38 @@ ligand_points = np.array([n.vector for n in neighbors])  # metal at origin
 matches = identify_geometry(ligand_points)                # ranked GeometryMatch list
 ```
 
+## Exploring nearby coordination numbers (`window`)
+
+A coordinating atom can sit right at the edge of the cutoff, making the
+"true" CN ambiguous. `window` (Python `analyze(..., window=N)`, CLI
+`--window N`) explores that: it additionally considers dropping up to N of
+the cutoff-defined neighbor set's furthest neighbors, and adding up to N of
+the closest atoms just outside it, pooling ranked candidates from every CN
+tested (base CN +/- N) into one best-first table.
+
+- **`window=0`** (default) reproduces the original single-CN behavior exactly.
+- A neighbor is only **removable** if there's a genuine distance gap (`>
+  tolerance`) between it and the kept core -- this stops e.g. a uniformly
+  distorted octahedron from being reported as `vacant_octahedral` just
+  because one ligand happens to be nominally furthest.
+- An atom is only **addable** if it's within 1.5x the pairwise
+  covalent-radius-sum distance for that atom pair -- this stops a large
+  `window` on a sparse structure from reaching for chemically implausible,
+  far-away atoms.
+- If the base (cutoff-defined) CN itself isn't supported, `analyze()`
+  still doesn't raise as long as some CN within the window is; it only
+  raises once none of the CNs tested are.
+- Raw shape measures aren't fully comparable across *different* CN --
+  fewer points are inherently easier to fit well, so a lower-CN row
+  scoring near the top isn't automatically the "more correct" answer;
+  check it's a genuine, chemically sensible subset before trusting it
+  over a higher-CN candidate.
+
+```python
+result = coordgeo.analyze("complex.xyz", cutoff=2.5, window=2)
+print(result.summary())  # table now spans every CN tested, e.g. base CN +/- 2
+```
+
 ## How metal detection works
 
 By default, the single atom whose element symbol is in a standard list of
@@ -128,17 +137,17 @@ metal atom is found — pass `metal_symbol=`/`metal_index=` to disambiguate.
 
 ## How the cutoff radius works
 
-Any atom within `cutoff` of the metal center is treated
-as a coordinating neighbor. **By default** (`cutoff` not given), the
-cutoff is computed per neighbor as `covalent_radius(metal) +
-covalent_radius(neighbor) + tolerance` (tolerance defaults to 0.4 A),
-using the tabulated radii in `coordgeo/radii.py` (Cordero et al., see
-[References](#references)) — the same kind of
-sum-of-covalent-radii-plus-tolerance heuristic used by OpenBabel/pymatgen.
-If an atom close enough to matter has no tabulated radius, a `ValueError`
-is raised rather than guessing. **Pass `cutoff` explicitly** instead for a
-pure fixed distance (no chemistry) — a common starting point is ~2.4-2.8 A
-for first-row transition metals, larger for heavier metals/longer bonds.
+Any atom within `cutoff` of the metal center is treated as a coordinating
+neighbor. **By default** (`cutoff` not given), the cutoff is computed per
+neighbor as `covalent_radius(metal) + covalent_radius(neighbor) +
+tolerance` (tolerance defaults to 0.4 A), using the tabulated radii in
+`coordgeo/radii.py` (Cordero et al., see [References](#references)) — the
+same kind of sum-of-covalent-radii-plus-tolerance heuristic used by
+OpenBabel/pymatgen. If an atom close enough to matter has no tabulated
+radius, a `ValueError` is raised rather than guessing. **Pass `cutoff`
+explicitly** instead for a pure fixed distance (no chemistry) — a common
+starting point is ~2.4-2.8 A for first-row transition metals, larger for
+heavier metals/longer bonds.
 
 ## Reference geometries included
 
@@ -171,6 +180,7 @@ tuple in `coordgeo/geometries.py`.
 - CN <= 7 uses an exact brute-force search; CN > 7 uses the approximate ICP search above, which is not guaranteed to find the global optimum (though it reliably does in practice with many random restarts). Pass `seed=`/`--seed` for reproducible results there.
 - Distance-based neighbor detection has no chemical bonding knowledge (bond orders, valence, etc.) — it is purely geometric.
 - The covalent radii table covers H through Cm (the whole periodic table except synthetic superheavy elements and the actinide tail Bk-Lr); pass `cutoff=` explicitly for anything it doesn't cover.
+- The `window` gap/ceiling thresholds (see above) are fixed, not user-configurable.
 
 ## References
 

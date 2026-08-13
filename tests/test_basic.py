@@ -251,3 +251,172 @@ def test_analyze_accepts_pathlib_path():
 def test_analyze_rejects_unsupported_source_type():
     with pytest.raises(TypeError):
         coordgeo.analyze(42, cutoff=2.5)
+
+
+def _octahedral_plus_extras_xyz(tmp_path):
+    # 5 core N ligands near ideal octahedral positions (2.08 A, no
+    # meaningful spread among themselves) + 1 genuinely stretched N (2.60 A,
+    # a real Jahn-Teller-like gap from the core) + 2 extra O atoms further
+    # out still (outside a 2.65 A cutoff).
+    xyz = tmp_path / "octa_plus_extras.xyz"
+    xyz.write_text(
+        "9\ndistorted octahedron: 5 core N + 1 stretched N + 2 distant O\n"
+        "Fe 0.0 0.0 0.0\n"
+        "N 2.08 0.0 0.0\n"
+        "N -2.08 0.0 0.0\n"
+        "N 0.0 2.08 0.0\n"
+        "N 0.0 -2.08 0.0\n"
+        "N 0.0 0.0 2.08\n"
+        "N 0.0 0.0 -2.60\n"
+        "O 0.3 0.3 3.05\n"
+        "O -0.3 -0.3 3.15\n"
+    )
+    return str(xyz)
+
+
+def test_analyze_window_default_reproduces_original_behavior():
+    xyz = os.path.join(EXAMPLES, "octahedral_example.xyz")
+    default = coordgeo.analyze(xyz, cutoff=2.5)
+    explicit_zero = coordgeo.analyze(xyz, cutoff=2.5, window=0)
+
+    assert default.coordination_number == explicit_zero.coordination_number == 6
+    assert [m.name for m in default.matches] == [m.name for m in explicit_zero.matches]
+    assert [m.measure for m in default.matches] == [m.measure for m in explicit_zero.matches]
+    assert default.best_match().name == "octahedral"
+    assert default.best_match().measure < 1e-6
+
+
+def test_analyze_with_window_pools_matches_across_coordination_numbers(tmp_path):
+    xyz = _octahedral_plus_extras_xyz(tmp_path)
+    result = coordgeo.analyze(xyz, cutoff=2.65, window=2)
+
+    # `neighbors`/`coordination_number` still reflect the base (window=0) set.
+    assert result.coordination_number == 6
+
+    cns_tested = sorted({m.coordination_number for m in result.matches})
+    # CN=4 is absent: removing 2 neighbors would have to cut into the
+    # tightly-clustered 5-N core (no gap between them), which the
+    # distance-gap requirement now blocks. CN=5 (dropping only the
+    # genuinely stretched 6th N, which *does* clear the gap) is still
+    # reachable.
+    assert cns_tested == [5, 6, 7, 8]
+
+    # Pooled matches are sorted best-first regardless of which CN they came from.
+    assert result.matches == sorted(result.matches, key=lambda m: m.measure)
+
+    octahedral = next(m for m in result.matches if m.name == "octahedral")
+    assert octahedral.coordination_number == 6
+    # ...clearly better than CN=7/8, which necessarily include the
+    # poorly-fitting extra O atom(s) -- unlike the CN=5 subset (dropping
+    # a genuine outlier), a same-symmetry-family smaller-CN match can
+    # still coincidentally score close to or better than the full CN
+    # purely from having fewer points to fit (see the caveat in
+    # analyze()'s docstring: raw measures aren't fully comparable across
+    # different CN even when the removal itself was well-justified).
+    cn7_best = min(m.measure for m in result.matches if m.coordination_number == 7)
+    cn8_best = min(m.measure for m in result.matches if m.coordination_number == 8)
+    assert cn7_best > octahedral.measure
+    assert cn8_best > octahedral.measure
+
+
+def test_analyze_window_blocks_removal_without_a_distance_gap():
+    # octahedral_example.xyz is a *perfectly* idealized octahedron -- all 6
+    # Fe-N distances are exactly tied at 2.10 A, so there is no genuine gap
+    # anywhere. This is the exact scenario that used to misreport
+    # vacant_octahedral (CN=5) as the best match: window's remove side must
+    # not offer any smaller CN here, since none of the 6 ligands are
+    # meaningfully separated from the rest.
+    xyz = os.path.join(EXAMPLES, "octahedral_example.xyz")
+    result = coordgeo.analyze(xyz, cutoff=2.2, window=2)
+    cns_tested = sorted({m.coordination_number for m in result.matches})
+    assert cns_tested == [6]  # no atoms to add either, but the point here is: no removal
+    assert result.best_match().name == "octahedral"
+    assert result.best_match().measure < 1e-6
+
+
+def test_analyze_window_allows_removal_with_a_genuine_distance_gap(tmp_path):
+    # Deliberately staircased distances (0.5 A apart, each well beyond the
+    # default 0.4 A tolerance) so every sequential removal step clears the
+    # gap requirement, all the way down to CN=1 (invalid -- excluded from
+    # matches, not raised, since the base CN=6 and several window CNs are
+    # still valid).
+    xyz = tmp_path / "staircase.xyz"
+    xyz.write_text(
+        "7\nstaircase distances to exercise full sequential removal\n"
+        "Fe 0.0 0.0 0.0\n"
+        "N 2.0 0.0 0.0\n"
+        "N -2.5 0.0 0.0\n"
+        "N 0.0 3.0 0.0\n"
+        "N 0.0 -3.5 0.0\n"
+        "N 0.0 0.0 4.0\n"
+        "N 0.0 0.0 -4.5\n"
+    )
+    result = coordgeo.analyze(str(xyz), cutoff=4.5, window=5)
+    cns_tested = sorted({m.coordination_number for m in result.matches})
+    assert 1 not in cns_tested
+    assert cns_tested == [2, 3, 4, 5, 6]
+
+
+def test_analyze_negative_window_raises():
+    xyz = os.path.join(EXAMPLES, "octahedral_example.xyz")
+    with pytest.raises(ValueError):
+        coordgeo.analyze(xyz, cutoff=2.5, window=-1)
+
+
+def test_analyze_window_rescues_invalid_base_cn():
+    # cutoff=1.0 gives a base CN=0 (invalid on its own), but window=5 reaches
+    # out to the 6 real N ligands at 2.10 A -- several of which give valid CNs.
+    xyz = os.path.join(EXAMPLES, "octahedral_example.xyz")
+    result = coordgeo.analyze(xyz, cutoff=1.0, window=5)
+    assert result.coordination_number == 0  # base (window=0) set is still empty
+    assert result.matches                   # but the window rescued it
+    cns_tested = sorted({m.coordination_number for m in result.matches})
+    assert cns_tested == [2, 3, 4, 5]
+
+
+def test_analyze_window_raises_only_if_nothing_in_window_is_valid():
+    xyz = os.path.join(EXAMPLES, "octahedral_example.xyz")
+    # window=0: no rescue possible, base CN=0 is the only thing tested.
+    with pytest.raises(ValueError, match="not supported"):
+        coordgeo.analyze(xyz, cutoff=1.0, window=0)
+    # window=1: still nowhere near enough to reach a real ligand (2.10 A away).
+    with pytest.raises(ValueError, match="not supported"):
+        coordgeo.analyze(xyz, cutoff=1.0, window=1)
+
+
+def test_analyze_window_add_side_respects_distance_ceiling(tmp_path):
+    # Fe with 2 real N ligands at 2.10 A (base CN=2), plus one N at 6.0 A --
+    # far beyond any plausible Fe-N bond, even though it's the closest
+    # excluded atom. window's add side should refuse to reach for it.
+    xyz = tmp_path / "ceiling_test.xyz"
+    xyz.write_text(
+        "4\nFe with 2 real N ligands plus one implausibly distant N\n"
+        "Fe 0.0 0.0 0.0\n"
+        "N 2.1 0.0 0.0\n"
+        "N -2.1 0.0 0.0\n"
+        "N 0.0 0.0 6.0\n"
+    )
+    result = coordgeo.analyze(str(xyz), cutoff=2.5, window=1)
+    cns_tested = sorted({m.coordination_number for m in result.matches})
+    assert cns_tested == [2]
+
+
+def test_summary_header_includes_metal_center_and_no_other_sections():
+    xyz = os.path.join(EXAMPLES, "octahedral_example.xyz")
+    summary = coordgeo.analyze(xyz, cutoff=2.5).summary()
+    lines = summary.splitlines()
+    assert lines[0].startswith("Candidate geometries for Fe (atom #1)")
+    # Only the header + one row per candidate -- no separate metal/cutoff/
+    # window/coordination-number/neighbor-list sections.
+    assert "Neighbors:" not in summary
+    assert "Cutoff" not in summary
+    assert "Window" not in summary
+    assert all(ln == lines[0] or ln.strip().startswith("CN=") for ln in lines)
+
+
+def test_summary_candidate_table_shows_cn_and_is_sorted_best_first():
+    xyz = os.path.join(EXAMPLES, "octahedral_example.xyz")
+    summary = coordgeo.analyze(xyz, cutoff=2.5).summary()
+    candidate_lines = [ln for ln in summary.splitlines() if ln.strip().startswith("CN=")]
+    assert candidate_lines[0].startswith("  CN=6 ")
+    assert candidate_lines[0].endswith("<-- best match")

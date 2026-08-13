@@ -15,8 +15,8 @@ def build_parser() -> argparse.ArgumentParser:
     -------
     argparse.ArgumentParser
         Parser accepting `xyz_file` and the `--cutoff`/`--tolerance`/
-        `--metal-symbol`/`--metal-index`/`--top`/`--seed`/`--version`
-        options.
+        `--window`/`--metal-symbol`/`--metal-index`/`--top`/`--seed`/
+        `--version` options.
     """
     parser = argparse.ArgumentParser(
         prog="coordgeo",
@@ -54,8 +54,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Explicitly select the metal center by 1-based atom index in the xyz file.",
     )
     parser.add_argument(
+        "--window", type=int, default=0,
+        help=(
+            "Also consider adding/removing up to N neighbors around the cutoff "
+            "boundary, pooling ranked candidates across every coordination number "
+            "tested (default: 0, i.e. only the cutoff-defined CN)."
+        ),
+    )
+    parser.add_argument(
         "--top", type=int, default=None,
-        help="Only show the top N candidate geometries (default: show all for that CN).",
+        help="Only show the top N rows of the candidate geometry table (default: show all tested).",
     )
     parser.add_argument(
         "--seed", type=int, default=None,
@@ -99,6 +107,7 @@ def main(argv=None) -> int:
         result = analyze(
             args.xyz_file,
             cutoff=args.cutoff,
+            window=args.window,
             metal_symbol=args.metal_symbol,
             metal_index=metal_index0,
             tolerance=args.tolerance,
