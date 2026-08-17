@@ -4,7 +4,7 @@ import pytest
 
 import coordgeo
 from coordgeo.matcher import shape_measure, identify_geometry, EXACT_PERMUTATION_MAX_N
-from coordgeo.geometries import GEOMETRIES, MIN_SUPPORTED_CN, MAX_SUPPORTED_CN
+from coordgeo.geometries import GEOMETRIES, MIN_SUPPORTED_CN, MAX_SUPPORTED_CN, get_geometry_by_name
 
 EXAMPLES = os.path.join(os.path.dirname(__file__), "..", "examples")
 
@@ -420,3 +420,94 @@ def test_summary_candidate_table_shows_cn_and_is_sorted_best_first():
     candidate_lines = [ln for ln in summary.splitlines() if ln.strip().startswith("CN=")]
     assert candidate_lines[0].startswith("  CN=6 ")
     assert candidate_lines[0].endswith("<-- best match")
+
+
+def test_get_geometry_by_name_returns_cn_and_template():
+    cn, template = get_geometry_by_name("octahedral")
+    assert cn == 6
+    assert template.shape == (6, 3)
+
+
+def test_get_geometry_by_name_unknown_raises():
+    with pytest.raises(ValueError, match="Unknown geometry name"):
+        get_geometry_by_name("not_a_real_geometry")
+
+
+def test_analyze_by_geometry_is_not_a_method_of_analyze():
+    # analyze() no longer accepts a `geometries` kwarg -- it's a separate
+    # public function now (see the design discussion this split resolved).
+    with pytest.raises(TypeError):
+        coordgeo.analyze(os.path.join(EXAMPLES, "octahedral_example.xyz"), geometries=["octahedral"])
+
+
+def test_analyze_by_geometry_scores_only_requested_names():
+    xyz = os.path.join(EXAMPLES, "octahedral_example.xyz")
+    result = coordgeo.analyze_by_geometry(xyz, geometries=["square_planar", "octahedral"])
+    names = {m.name for m in result.matches}
+    assert names == {"square_planar", "octahedral"}
+    cns = {m.coordination_number: m.name for m in result.matches}
+    assert cns == {4: "square_planar", 6: "octahedral"}
+
+
+def test_analyze_by_geometry_sorts_by_measure_best_first():
+    xyz = os.path.join(EXAMPLES, "square_planar_example.xyz")
+    result = coordgeo.analyze_by_geometry(xyz, geometries=["tetrahedral", "square_planar"])
+    assert result.matches == sorted(result.matches, key=lambda m: m.measure)
+    assert result.best_match().name == "square_planar"
+    # neighbors/coordination_number reflect the best-scoring requested geometry.
+    assert result.coordination_number == 4
+
+
+def test_analyze_by_geometry_unknown_name_warns_and_raises_if_alone():
+    xyz = os.path.join(EXAMPLES, "octahedral_example.xyz")
+    with pytest.warns(UserWarning, match="Unknown geometry name"):
+        with pytest.raises(ValueError, match="None of the requested geometries"):
+            coordgeo.analyze_by_geometry(xyz, geometries=["not_a_real_geometry"])
+
+
+def test_analyze_by_geometry_empty_list_raises():
+    xyz = os.path.join(EXAMPLES, "octahedral_example.xyz")
+    with pytest.raises(ValueError, match="non-empty"):
+        coordgeo.analyze_by_geometry(xyz, geometries=[])
+
+
+def test_analyze_by_geometry_not_enough_atoms_warns_and_raises_if_alone():
+    xyz = os.path.join(EXAMPLES, "tetrahedral_example.xyz")  # only 4 non-metal atoms
+    with pytest.warns(UserWarning, match="requires 12 neighbors"):
+        with pytest.raises(ValueError, match="None of the requested geometries"):
+            coordgeo.analyze_by_geometry(xyz, geometries=["icosahedral"])
+
+
+def test_analyze_by_geometry_skips_failing_ones_and_keeps_the_rest():
+    # 'octahedral' and 'square_planar' both work on this structure;
+    # 'not_a_real_geometry' and 'icosahedral' (needs 12, only 6 available)
+    # should each just be skipped with a warning, not abort the whole call.
+    xyz = os.path.join(EXAMPLES, "octahedral_example.xyz")
+    with pytest.warns(UserWarning) as recorded:
+        result = coordgeo.analyze_by_geometry(
+            xyz, geometries=["octahedral", "not_a_real_geometry", "square_planar", "icosahedral"]
+        )
+    warning_messages = [str(w.message) for w in recorded]
+    assert any("not_a_real_geometry" in msg for msg in warning_messages)
+    assert any("icosahedral" in msg for msg in warning_messages)
+    assert {m.name for m in result.matches} == {"octahedral", "square_planar"}
+    assert result.best_match().name == "octahedral"
+
+
+def test_analyze_by_geometry_has_no_cutoff_or_window_parameters():
+    # These don't apply to this mode, so they shouldn't exist on the
+    # signature at all (rather than silently accepting and ignoring them).
+    xyz = os.path.join(EXAMPLES, "octahedral_example.xyz")
+    with pytest.raises(TypeError):
+        coordgeo.analyze_by_geometry(xyz, geometries=["octahedral"], cutoff=0.1)
+    with pytest.raises(TypeError):
+        coordgeo.analyze_by_geometry(xyz, geometries=["octahedral"], window=3)
+
+
+def test_analyze_by_geometry_result_has_placeholder_cutoff_and_window():
+    xyz = os.path.join(EXAMPLES, "octahedral_example.xyz")
+    result = coordgeo.analyze_by_geometry(xyz, geometries=["octahedral"])
+    assert result.best_match().name == "octahedral"
+    assert result.best_match().measure < 1e-6
+    assert result.cutoff is None
+    assert result.window == 0

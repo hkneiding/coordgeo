@@ -81,6 +81,23 @@ from ase import Atoms
 result = coordgeo.analyze(Atoms(...), cutoff=2.6)
 ```
 
+If you already have specific geometries in mind rather than wanting an
+open-ended search, use `analyze_by_geometry()` to test exactly those
+(Python-API only) -- each name is resolved to its own CN and matched
+against that many closest atoms by plain distance; there's no
+cutoff/tolerance/window here at all, and unlike `window`, no plausibility
+check either, since you're specifying the hypothesis directly:
+
+```python
+result = coordgeo.analyze_by_geometry("complex.xyz", geometries=["square_planar", "octahedral"])
+# result.matches has one entry per name, best (lowest measure) first
+```
+
+A name that can't be evaluated (unknown, or needs more atoms than the
+structure has) is skipped with a `UserWarning` rather than aborting the
+rest; it only raises if *none* of the requested geometries could be
+evaluated.
+
 Lower-level building blocks are also available:
 
 ```python

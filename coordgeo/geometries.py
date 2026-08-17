@@ -314,3 +314,32 @@ GEOMETRIES = get_geometries()
 
 MAX_SUPPORTED_CN = max(GEOMETRIES.keys())
 MIN_SUPPORTED_CN = min(GEOMETRIES.keys())
+
+GEOMETRY_BY_NAME: Dict[str, Tuple[int, np.ndarray]] = {
+    name: (cn, template) for cn, templates in GEOMETRIES.items() for name, template in templates
+}
+
+
+def get_geometry_by_name(name: str) -> Tuple[int, np.ndarray]:
+    """Look up a named reference geometry's coordination number and template.
+
+    Parameters
+    ----------
+    name : str
+        Geometry name as used in GEOMETRIES, e.g. "octahedral".
+
+    Returns
+    -------
+    (int, numpy.ndarray)
+        `(coordination_number, normalized_vertices)` for that geometry.
+
+    Raises
+    ------
+    ValueError
+        If `name` isn't a key in GEOMETRY_BY_NAME.
+    """
+    if name not in GEOMETRY_BY_NAME:
+        raise ValueError(
+            f"Unknown geometry name {name!r}. Valid names: {sorted(GEOMETRY_BY_NAME)}."
+        )
+    return GEOMETRY_BY_NAME[name]

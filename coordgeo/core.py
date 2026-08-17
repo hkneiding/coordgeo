@@ -2,15 +2,16 @@
 from __future__ import annotations
 
 import os
+import warnings
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import numpy as np
 
 from .elements import is_metal
 from .io import Structure, load_xyz, structure_from_ase_atoms
-from .matcher import GeometryMatch, identify_geometry
-from .geometries import MAX_SUPPORTED_CN, MIN_SUPPORTED_CN
+from .matcher import EXACT_PERMUTATION_MAX_N, GeometryMatch, identify_geometry, shape_measure
+from .geometries import MAX_SUPPORTED_CN, MIN_SUPPORTED_CN, get_geometry_by_name
 from .radii import COVALENT_RADII, covalent_radius
 
 if TYPE_CHECKING:
@@ -298,6 +299,216 @@ def get_neighbors(
     return neighbors
 
 
+def _load_structure_and_metal(
+    source: Union[str, os.PathLike, "AseAtoms"],
+    metal_symbol: Optional[str],
+    metal_index: Optional[int],
+) -> Tuple[Structure, int]:
+    """Load a structure from `source` and resolve its metal center index.
+
+    Shared preamble for `analyze()` and `analyze_by_geometry()`.
+
+    Parameters
+    ----------
+    source : str, os.PathLike, or ase.Atoms
+        Path to a .xyz file, or an in-memory `ase.Atoms` object.
+    metal_symbol, metal_index : optional
+        Explicitly select the metal center instead of relying on
+        auto-detection. metal_index is 0-based.
+
+    Returns
+    -------
+    (Structure, int)
+        The parsed structure and the resolved 0-based metal atom index.
+
+    Raises
+    ------
+    ValueError
+        If the metal center can't be resolved (see `find_metal_center`).
+    TypeError
+        If `source` is neither a path nor an ase.Atoms-like object (see
+        `structure_from_ase_atoms`).
+    OSError
+        If `source` is a path that doesn't exist or can't be opened (see
+        `load_xyz`).
+    """
+    if isinstance(source, (str, os.PathLike)):
+        structure = load_xyz(source)
+    else:
+        structure = structure_from_ase_atoms(source)
+    m_idx = find_metal_center(structure, metal_symbol=metal_symbol, metal_index=metal_index)
+    return structure, m_idx
+
+
+def analyze_by_geometry(
+    source: Union[str, os.PathLike, "AseAtoms"],
+    geometries: List[str],
+    metal_symbol: Optional[str] = None,
+    metal_index: Optional[int] = None,
+    seed: Optional[int] = None,
+) -> AnalysisResult:
+    """Score a structure against a specific, named set of reference geometries.
+
+    Unlike `analyze()`, this doesn't search open-endedly: it tests exactly
+    the geometries you name, each against its own coordination number's
+    worth of closest atoms to the metal (by plain distance -- there's no
+    cutoff, tolerance, or window involved, and unlike `analyze(...,
+    window=...)`, no gap/ceiling plausibility check either, since you're
+    specifying the hypothesis directly rather than exploring blindly).
+    Use this when you already have specific candidates in mind.
+
+    A name that can't be evaluated (unknown, or needs more atoms than the
+    structure has) is skipped with a `UserWarning` rather than aborting
+    the rest -- the other requested geometries are still scored.
+
+    Parameters
+    ----------
+    source : str, os.PathLike, or ase.Atoms
+        Path to a .xyz file describing a single (mononuclear) metal
+        complex, or an in-memory `ase.Atoms` object.
+    geometries : list of str
+        Names of reference geometries to test, e.g.
+        `['square_planar', 'octahedral']` (see
+        `coordgeo.geometries.GEOMETRIES` for the full list). Each name is
+        resolved to its own coordination number independently -- they
+        don't need to share one.
+    metal_symbol, metal_index : optional
+        Explicitly select the metal center instead of relying on
+        auto-detection. metal_index is 0-based.
+    seed : optional
+        Seed for the randomized ICP search used for coordination numbers
+        above matcher.EXACT_PERMUTATION_MAX_N (ignored for smaller CN).
+        Pass an explicit value for reproducible results.
+
+    Returns
+    -------
+    AnalysisResult
+        `matches` has one GeometryMatch per requested name that could be
+        evaluated (fewer than `len(geometries)` if any were skipped),
+        sorted best (lowest measure) first. `neighbors`/`coordination_number`
+        reflect whichever requested geometry scored best; `cutoff` is
+        always None and `window` always 0, since neither applies here.
+
+    Warns
+    -----
+    UserWarning
+        Once per requested name that couldn't be evaluated (unknown, or
+        needs more neighbors than the structure has).
+
+    Raises
+    ------
+    ValueError
+        If `geometries` is empty, or none of its names could be evaluated
+        (see the emitted warnings for why); or if the metal center can't
+        be resolved (see `find_metal_center`).
+    TypeError
+        If `source` is neither a path nor an ase.Atoms-like object (see
+        `structure_from_ase_atoms`).
+    OSError
+        If `source` is a path that doesn't exist or can't be opened (see
+        `load_xyz`).
+    """
+    structure, m_idx = _load_structure_and_metal(source, metal_symbol, metal_index)
+    return _score_named_geometries(structure, m_idx, geometries, seed)
+
+
+def _score_named_geometries(
+    structure: Structure,
+    metal_index: int,
+    geometries: List[str],
+    seed: Optional[int],
+) -> AnalysisResult:
+    """Score a structure against a specific, named set of reference geometries.
+
+    Bypasses cutoff-based neighbor detection entirely: each requested
+    geometry is matched against that many closest atoms to the metal by
+    plain distance -- no gap/ceiling plausibility checks (see
+    `analyze_by_geometry` for why). A geometry that can't be evaluated
+    (unknown name, or not enough atoms in the structure) is skipped with
+    a `UserWarning` rather than aborting the rest -- the other requested
+    geometries are still scored.
+
+    Parameters
+    ----------
+    structure : Structure
+        Parsed structure containing the metal and candidate neighbors.
+    metal_index : int
+        0-based index of the metal atom in `structure.atoms`.
+    geometries : list of str
+        Names of reference geometries to test (see GEOMETRY_BY_NAME).
+    seed : optional
+        Seed for the randomized ICP search used for coordination numbers
+        above matcher.EXACT_PERMUTATION_MAX_N (ignored for smaller CN).
+
+    Returns
+    -------
+    AnalysisResult
+        `matches` has one GeometryMatch per requested name that could be
+        evaluated (fewer than `len(geometries)` if any were skipped),
+        sorted best (lowest measure) first; `neighbors`/`coordination_number`
+        reflect whichever requested geometry scored best. `cutoff` is
+        always None and `window` always 0 (neither applies here).
+
+    Warns
+    -----
+    UserWarning
+        For each requested name that can't be evaluated: not a known
+        reference geometry (see `get_geometry_by_name`), or requires more
+        non-metal atoms than the structure has.
+
+    Raises
+    ------
+    ValueError
+        If `geometries` is empty, or if none of the requested geometries
+        could be evaluated (see the emitted warnings for why).
+    """
+    if not geometries:
+        raise ValueError("geometries must be a non-empty list of geometry names.")
+
+    all_candidates = _all_neighbor_candidates(structure, metal_index)
+    rng = np.random.default_rng(seed)
+
+    scored: List[Tuple[GeometryMatch, List[Neighbor]]] = []
+    for name in geometries:
+        try:
+            cn, template = get_geometry_by_name(name)
+            if cn > len(all_candidates):
+                raise ValueError(
+                    f"'{name}' requires {cn} neighbors but the structure only has "
+                    f"{len(all_candidates)} non-metal atom(s)."
+                )
+            variant = all_candidates[:cn]
+            ligand_points = np.array([n.vector for n in variant])
+            measure, perm = shape_measure(
+                ligand_points, template, rng=rng if cn > EXACT_PERMUTATION_MAX_N else None,
+            )
+        except ValueError as exc:
+            warnings.warn(f"Skipping geometry {name!r}: {exc}", stacklevel=2)
+            continue
+        scored.append(
+            (GeometryMatch(name=name, coordination_number=cn, measure=measure, permutation=perm), variant)
+        )
+
+    if not scored:
+        raise ValueError(
+            f"None of the requested geometries could be evaluated: {geometries}. "
+            f"See the warnings above for the reason each one was skipped."
+        )
+
+    scored.sort(key=lambda pair: pair[0].measure)
+    matches = [m for m, _ in scored]
+    best_neighbors = scored[0][1]
+
+    return AnalysisResult(
+        metal_symbol=structure.atoms[metal_index].symbol,
+        metal_index=metal_index,
+        cutoff=None,
+        window=0,
+        neighbors=best_neighbors,
+        matches=matches,
+    )
+
+
 def analyze(
     source: Union[str, os.PathLike, "AseAtoms"],
     cutoff: Optional[float] = None,
@@ -324,6 +535,10 @@ def analyze(
     just the base one) turn out valid -- so a base CN that's itself too
     small/large is still rescued if some CN within the window is
     supported.
+
+    If you already have specific candidate geometries in mind rather than
+    wanting this kind of open-ended search, see `analyze_by_geometry()`
+    instead.
 
     Parameters
     ----------
@@ -374,10 +589,8 @@ def analyze(
     Returns
     -------
     AnalysisResult
-        The metal center, the base (window=0) neighbor list, and every
-        candidate geometry tested across the window, pooled into one
-        `matches` list sorted best (lowest measure) first regardless of
-        which coordination number each came from.
+        The metal center, its (base/window=0) neighbor list, and the
+        ranked candidate geometries in `matches`.
 
     Raises
     ------
@@ -398,11 +611,7 @@ def analyze(
     if window < 0:
         raise ValueError(f"window must be >= 0, got {window}.")
 
-    if isinstance(source, (str, os.PathLike)):
-        structure = load_xyz(source)
-    else:
-        structure = structure_from_ase_atoms(source)
-    m_idx = find_metal_center(structure, metal_symbol=metal_symbol, metal_index=metal_index)
+    structure, m_idx = _load_structure_and_metal(source, metal_symbol, metal_index)
     neighbors = get_neighbors(structure, m_idx, cutoff=cutoff, tolerance=tolerance)
 
     cn = len(neighbors)
