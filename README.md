@@ -166,6 +166,15 @@ explicitly** instead for a pure fixed distance (no chemistry) — a common
 starting point is ~2.4-2.8 A for first-row transition metals, larger for
 heavier metals/longer bonds.
 
+**Hydrogens are filtered separately, everywhere.** A candidate hydrogen is
+only ever treated as a coordinating neighbor if it has no closer covalent
+bond to some other atom -- a hydrogen already bonded to a carbon (e.g. an
+agostic C-H...M interaction) is excluded regardless of how close it looks
+to the metal, since it's the covalent partner of that other atom, not a
+free/candidate hydride. A genuine terminal hydride (bonded only to the
+metal) is unaffected. This applies universally: fixed or automatic
+`cutoff`, `window`, and `analyze_by_geometry()` alike.
+
 ## Reference geometries included
 
 | CN | Geometries |
@@ -205,6 +214,7 @@ both. Adding a geometry is just adding a `(name, Nx3 array)` tuple in
 - Distance-based neighbor detection has no chemical bonding knowledge (bond orders, valence, etc.) — it is purely geometric.
 - The covalent radii table covers H through Cm (the whole periodic table except synthetic superheavy elements and the actinide tail Bk-Lr); pass `cutoff=` explicitly for anything it doesn't cover.
 - The `window` gap/ceiling thresholds (see above) are fixed, not user-configurable.
+- The hydrogen-bonded-elsewhere filter (see above) is a distance heuristic, not a real bonding analysis -- it can't be turned off, and it relies on the structure file actually including the hydrogen's real bonding partner (e.g. a heavy-atom-only file gives it nothing to check against, so no hydrogen gets excluded on that basis).
 
 ## References
 

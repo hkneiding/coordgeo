@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 import numpy as np
 
 from .elements import is_metal
-from .io import Structure, load_xyz, structure_from_ase_atoms
+from .io import Atom, Structure, load_xyz, structure_from_ase_atoms
 from .matcher import EXACT_PERMUTATION_MAX_N, GeometryMatch, identify_geometry, shape_measure
 from .geometries import MAX_SUPPORTED_CN, MIN_SUPPORTED_CN, get_geometry_by_name
 from .radii import COVALENT_RADII, covalent_radius
@@ -207,8 +207,72 @@ def find_metal_center(
     return candidates[0]
 
 
+def _is_bonded_elsewhere(
+    structure: Structure, atom: Atom, metal_index: int, metal_distance: float
+) -> bool:
+    """Check whether an atom has a closer covalent bonding partner than the metal.
+
+    Used to exclude hydrogens that are actually bonded to some other atom
+    (typically carbon, e.g. an agostic C-H...M interaction) from being
+    treated as a coordinating neighbor, even when they're geometrically
+    close to the metal -- they're the covalent partner of that other atom,
+    not a free/candidate hydride. Only a bond *shorter* than `atom`'s
+    distance to the metal counts, so a genuine hydride (a short M-H bond)
+    isn't excluded just because some unrelated atom also happens to be
+    nearby.
+
+    Parameters
+    ----------
+    structure : Structure
+        Parsed structure to search for a bonding partner.
+    atom : Atom
+        The candidate atom to check (in practice, always a hydrogen).
+    metal_index : int
+        0-based index of the metal atom -- excluded from the search (a
+        bond *to* the metal doesn't count as "elsewhere").
+    metal_distance : float
+        `atom`'s distance to the metal, for comparison.
+
+    Returns
+    -------
+    bool
+        True if some other atom is closer to `atom` than `metal_distance`
+        and within a plausible covalent-bond distance of it
+        (covalent_radius(atom) + covalent_radius(other) +
+        DEFAULT_TOLERANCE). Atoms with unknown covalent radii are skipped,
+        since no bonding threshold can be established for them; if `atom`
+        itself has no known covalent radius, this always returns False.
+    """
+    try:
+        atom_radius = covalent_radius(atom.symbol)
+    except ValueError:
+        return False
+    for other in structure.atoms:
+        if other.index == atom.index or other.index == metal_index:
+            continue
+        dist = float(np.linalg.norm(other.coord - atom.coord))
+        if dist >= metal_distance:
+            continue
+        try:
+            other_radius = covalent_radius(other.symbol)
+        except ValueError:
+            continue
+        if dist <= atom_radius + other_radius + DEFAULT_TOLERANCE:
+            return True
+    return False
+
+
 def _all_neighbor_candidates(structure: Structure, metal_index: int) -> List[Neighbor]:
     """List every atom other than the metal, with no cutoff filter applied.
+
+    Hydrogen atoms with a closer covalent bonding partner than the metal
+    are excluded entirely, regardless of distance (see
+    `_is_bonded_elsewhere`) -- they're the covalent partner of that other
+    atom (e.g. a C-H bond in an agostic-type interaction), not a
+    free/candidate hydride for the metal. This is the single choke point
+    every higher-level neighbor-selection path (cutoff-based detection,
+    `window`'s add side, `analyze_by_geometry`) goes through, so the
+    filter applies universally rather than needing to be duplicated.
 
     Parameters
     ----------
@@ -220,7 +284,8 @@ def _all_neighbor_candidates(structure: Structure, metal_index: int) -> List[Nei
     Returns
     -------
     list of Neighbor
-        Every non-metal atom, sorted by ascending distance from the metal.
+        Every non-metal atom not excluded as above, sorted by ascending
+        distance from the metal.
     """
     metal_coord = structure.atoms[metal_index].coord
     candidates = []
@@ -229,6 +294,8 @@ def _all_neighbor_candidates(structure: Structure, metal_index: int) -> List[Nei
             continue
         vec = atom.coord - metal_coord
         dist = float(np.linalg.norm(vec))
+        if atom.symbol.strip().capitalize() == "H" and _is_bonded_elsewhere(structure, atom, metal_index, dist):
+            continue
         candidates.append(Neighbor(symbol=atom.symbol, index=atom.index, distance=dist, vector=vec))
     candidates.sort(key=lambda n: n.distance)
     return candidates
@@ -247,6 +314,9 @@ def get_neighbors(
     per-neighbor cutoff is used instead: covalent_radius(metal) +
     covalent_radius(atom) + tolerance -- this requires covalent radius data
     for the metal and every candidate atom's element (see radii.py).
+    Hydrogens with a closer covalent bond to some other atom (e.g. an
+    agostic C-H...M interaction) are never included, regardless of cutoff
+    -- see `_is_bonded_elsewhere`.
 
     Parameters
     ----------
@@ -354,8 +424,12 @@ def analyze_by_geometry(
     worth of closest atoms to the metal (by plain distance -- there's no
     cutoff, tolerance, or window involved, and unlike `analyze(...,
     window=...)`, no gap/ceiling plausibility check either, since you're
-    specifying the hypothesis directly rather than exploring blindly).
-    Use this when you already have specific candidates in mind.
+    specifying the hypothesis directly rather than exploring blindly). One
+    filter still applies here as everywhere else, though: hydrogens with a
+    closer covalent bond to some other atom (e.g. an agostic C-H...M
+    interaction) are never candidates, regardless of distance -- see
+    `_is_bonded_elsewhere`. Use this when you already have specific
+    candidates in mind.
 
     A name that can't be evaluated (unknown, or needs more atoms than the
     structure has) is skipped with a `UserWarning` rather than aborting
@@ -539,6 +613,11 @@ def analyze(
     If you already have specific candidate geometries in mind rather than
     wanting this kind of open-ended search, see `analyze_by_geometry()`
     instead.
+
+    Hydrogens with a closer covalent bond to some other atom (e.g. an
+    agostic C-H...M interaction) are never treated as coordinating
+    neighbors, regardless of distance to the metal or `cutoff`/`window` --
+    see `_is_bonded_elsewhere`.
 
     Parameters
     ----------

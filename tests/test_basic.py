@@ -511,3 +511,63 @@ def test_analyze_by_geometry_result_has_placeholder_cutoff_and_window():
     assert result.best_match().measure < 1e-6
     assert result.cutoff is None
     assert result.window == 0
+
+
+def _agostic_like_xyz(tmp_path):
+    # Fe with 5 real N ligands (base CN=5) plus a C-H group positioned so
+    # the H points toward the metal (2.91 A, within window's ceiling for
+    # H) while being a normal (1.09 A) C-H bond -- the carbon itself sits
+    # outside any candidacy ceiling (4.0 A), so it can never confuse the
+    # result; this isolates whether the H alone gets excluded.
+    xyz = tmp_path / "agostic_like.xyz"
+    xyz.write_text(
+        "8\nFe with 5 N ligands plus an agostic-like C-H pointing at the metal\n"
+        "Fe 0.0 0.0 0.0\n"
+        "N 2.1 0.0 0.0\n"
+        "N -2.1 0.0 0.0\n"
+        "N 0.0 2.1 0.0\n"
+        "N 0.0 -2.1 0.0\n"
+        "N 0.0 0.0 2.1\n"
+        "C 0.0 0.0 -4.0\n"
+        "H 0.0 0.0 -2.91\n"
+    )
+    return str(xyz)
+
+
+def test_window_excludes_hydrogen_bonded_to_another_atom(tmp_path):
+    xyz = _agostic_like_xyz(tmp_path)
+    result = coordgeo.analyze(xyz, cutoff=2.2, window=3)
+    # Neither the agostic-like H nor the (out-of-ceiling-range) C should
+    # ever become a window candidate -- base CN=5 is the only CN reachable.
+    assert result.coordination_number == 5
+    cns_tested = sorted({m.coordination_number for m in result.matches})
+    assert cns_tested == [5]
+    assert all(n.symbol == "N" for n in result.neighbors)
+
+
+def test_base_cutoff_also_excludes_hydrogen_bonded_to_another_atom(tmp_path):
+    # Same fixture, but check the *base* (non-window) cutoff path too --
+    # the filter lives in _all_neighbor_candidates, the shared choke point,
+    # so it should apply here as well, not just to window.
+    xyz = _agostic_like_xyz(tmp_path)
+    neighbors = coordgeo.get_neighbors(coordgeo.load_xyz(xyz), 0, cutoff=3.5)
+    assert all(n.symbol != "H" for n in neighbors)
+
+
+def test_genuine_hydride_is_not_excluded(tmp_path):
+    # A real terminal hydride (short M-H bond, no other bonding partner)
+    # must still be included normally.
+    xyz = tmp_path / "hydride.xyz"
+    xyz.write_text(
+        "7\nFe with 5 N ligands plus a genuine terminal hydride\n"
+        "Fe 0.0 0.0 0.0\n"
+        "N 2.1 0.0 0.0\n"
+        "N -2.1 0.0 0.0\n"
+        "N 0.0 2.1 0.0\n"
+        "N 0.0 -2.1 0.0\n"
+        "N 0.0 0.0 2.1\n"
+        "H 0.0 0.0 -1.6\n"
+    )
+    result = coordgeo.analyze(str(xyz), cutoff=2.2)
+    assert result.coordination_number == 6
+    assert "H" in [n.symbol for n in result.neighbors]
