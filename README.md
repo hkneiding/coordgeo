@@ -228,9 +228,9 @@ cutoff radius works" above) are from:
 
 - Cordero, B.; Gómez, V.; Platero-Prats, A. E.; Revés, M.; Echeverría, J.; Cremades, E.; Barragán, F.; Alvarez, S. *Covalent Radii Revisited.* Dalton Trans. **2008**, 2832–2838.
 
-Most reference geometry templates use vertex coordinates sourced from
-cosymlib's published reference structures via Q-Shape's implementation
-(see the module docstring in `coordgeo/geometries.py` for the exceptions
-that are exact by construction instead):
+Most reference geometry templates use vertex coordinates taken directly
+from cosymlib's own published reference structures (see the module
+docstring in `coordgeo/geometries.py` for the exceptions that are exact
+by construction instead):
 
-- Castro Silva Junior, H. *Q-Shape* reference geometry definitions (cosymlib-derived). `src/constants/referenceGeometries/index.js`. https://github.com/HenriqueCSJ/q-shape/blob/main/src/constants/referenceGeometries/index.js
+- Alemany, P.; Bernuz, E.; Carreras, A.; Llunell, M. *Cosymlib* reference geometry definitions. `cosymlib/shape/ideal_structures_center.yaml`. https://github.com/GrupEstructuraElectronicaSimetria/cosymlib/blob/master/cosymlib/shape/ideal_structures_center.yaml

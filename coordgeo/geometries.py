@@ -18,12 +18,13 @@ vertex), a "capped" polyhedron adds an extra vertex at a face center (e.g.
 capped_octahedron = octahedral plus one vertex), and "biaugmented" adds
 two.
 
-Most templates' vertex coordinates are sourced directly from cosymlib/
-SHAPE 2.1's published reference structures (via Q-Shape's implementation),
-converted to this module's metal-at-origin convention: their central-atom
-point subtracted out, since cosymlib centers on the ligand+metal centroid
-instead (see the coordgeo/Q-Shape methodology discussion for why coordgeo
-uses the former). A handful of templates need no such conversion because
+Most templates' vertex coordinates are taken directly from cosymlib's own
+published reference structures (`cosymlib/shape/ideal_structures_center.yaml`,
+see References in the README), converted to this module's metal-at-origin
+convention: their central-atom point subtracted out, since cosymlib
+centers on the ligand+metal centroid instead (see the coordgeo/cosymlib
+methodology discussion in the README for why coordgeo uses the former). A
+handful of templates need no such conversion because
 they're exact by construction regardless of source -- flat regular
 n-gons (trigonal_planar, pentagonal_planar, hexagonal_planar), shapes
 with only one possible angle (t_shaped, square_planar), and the Platonic
@@ -572,9 +573,9 @@ GEOMETRY_BY_NAME: Dict[str, Tuple[int, np.ndarray]] = {
 }
 
 # Idealized point group (Schoenflies symbol) of each reference geometry, as
-# tabulated by SHAPE 2.1 / cosymlib (via Q-Shape) -- purely informational
-# metadata for display (see GeometryMatch.point_group), not used in the
-# shape-matching computation itself.
+# tabulated by SHAPE 2.1 / cosymlib (cosymlib/shape/tools.py) -- purely
+# informational metadata for display (see GeometryMatch.point_group), not
+# used in the shape-matching computation itself.
 POINT_GROUPS: Dict[str, str] = {
     "linear": "D∞h",
     "v_shaped": "C2v",
