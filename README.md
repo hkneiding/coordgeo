@@ -170,25 +170,32 @@ heavier metals/longer bonds.
 
 | CN | Geometries |
 |----|------------|
-| 2  | linear, bent |
-| 3  | trigonal planar, trigonal pyramidal, T-shaped |
+| 2  | linear, bent, L-shaped |
+| 3  | trigonal planar, trigonal pyramidal, T-shaped, fac-trivacant octahedral |
 | 4  | tetrahedral, square planar, seesaw, vacant trigonal bipyramidal |
 | 5  | trigonal bipyramidal, square pyramidal, pentagonal planar, vacant octahedral |
 | 6  | octahedral, trigonal prismatic, pentagonal pyramidal, hexagonal planar |
 | 7  | pentagonal bipyramidal, capped octahedron, capped trigonal prism, hexagonal pyramidal |
-| 8  | cubic, square antiprismatic, hexagonal bipyramidal, dodecahedral (bisdisphenoid), bicapped trigonal prismatic |
+| 8  | cubic, square antiprismatic, hexagonal bipyramidal, dodecahedral (bisdisphenoid), bicapped trigonal prismatic, snub disphenoid |
 | 9  | tricapped trigonal prismatic, capped square antiprismatic, heptagonal bipyramidal |
-| 10 | pentagonal prismatic, pentagonal antiprismatic, bicapped cube |
+| 10 | pentagonal prismatic, pentagonal antiprismatic, bicapped cube, bicapped square antiprismatic |
 | 11 | capped pentagonal prismatic, capped pentagonal antiprismatic |
-| 12 | icosahedral, cuboctahedron, hexagonal prismatic |
+| 12 | icosahedral, cuboctahedron, hexagonal prismatic, hexagonal antiprismatic, truncated tetrahedral |
 
 These are idealized templates, not fitted to any real complex, and not
 the exhaustive SHAPE reference set (which includes further Johnson-solid
 and low-symmetry variants, especially at CN 8-12). Many higher-CN
 templates are built systematically, per standard nomenclature: a "vacant"
 polyhedron removes a vertex from a larger one, a "capped" one adds one at
-a face center. Adding a geometry is just adding a `(name, Nx3 array)`
-tuple in `coordgeo/geometries.py`.
+a face center. A few (l_shaped, fac_trivacant_octahedral, snub_disphenoid,
+bicapped_square_antiprismatic, hexagonal_antiprismatic,
+truncated_tetrahedral) are instead sourced directly from cosymlib/SHAPE
+2.1's published reference structures and converted to coordgeo's
+metal-at-origin convention (see [References](#references) and the
+methodology note in `coordgeo/geometries.py`). Where a shape has multiple
+published variants, only the equal-edge-length one is included, never
+both. Adding a geometry is just adding a `(name, Nx3 array)` tuple in
+`coordgeo/geometries.py`.
 
 ## Limitations
 
@@ -209,6 +216,12 @@ SHAPE program:
 - Alvarez, S.; Alemany, P.; Casanova, D.; Cirera, J.; Llunell, M.; Avnir, D. *Shape Maps and Polyhedral Interconversion Paths in Transition Metal Chemistry.* Coord. Chem. Rev. **2005**, 249, 1693–1708.
 - Llunell, M.; Casanova, D.; Cirera, J.; Alemany, P.; Alvarez, S. *SHAPE: Program for the Stereochemical Analysis of Molecular Fragments by Means of Continuous Shape Measures and Associated Tools*, v2.1; Universitat de Barcelona, 2013.
 
+A Python library implementing a similar continuous symmetry/shape measures
+approach (some of coordgeo's reference geometry vertex data traces back to
+this library -- see below):
+
+- Alemany, P.; Bernuz, E.; Carreras, A.; Llunell, M. *Cosymlib: A Python Library for Continuous Symmetry Measures*, v0.9.5; Zenodo, **2021**. https://doi.org/10.5281/zenodo.4925767
+
 A related, independently developed web application built on a similar approach:
 
 - Castro Silva Junior, H. *Q-Shape: Quantitative Shape Analyzer*, v1.5.0; Zenodo, **2026**. https://doi.org/10.5281/zenodo.18209621
@@ -217,3 +230,11 @@ The tabulated covalent radii used for the automatic cutoff (see "How the
 cutoff radius works" above) are from:
 
 - Cordero, B.; Gómez, V.; Platero-Prats, A. E.; Revés, M.; Echeverría, J.; Cremades, E.; Barragán, F.; Alvarez, S. *Covalent Radii Revisited.* Dalton Trans. **2008**, 2832–2838.
+
+Six reference geometry templates (`l_shaped`, `fac_trivacant_octahedral`,
+`snub_disphenoid`, `bicapped_square_antiprismatic`,
+`hexagonal_antiprismatic`, `truncated_tetrahedral`) use vertex coordinates
+sourced from cosymlib's published reference structures via Q-Shape's
+implementation, converted to coordgeo's metal-at-origin convention:
+
+- Castro Silva Junior, H. *Q-Shape* reference geometry definitions (cosymlib-derived). `src/constants/referenceGeometries/index.js`. https://github.com/HenriqueCSJ/q-shape/blob/main/src/constants/referenceGeometries/index.js

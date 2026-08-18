@@ -17,6 +17,18 @@ line with standard nomenclature: a "vacant" polyhedron removes a vertex
 from a larger one (e.g. vacant_octahedral = octahedral minus one vertex)
 and a "capped" polyhedron adds an extra vertex at a face center (e.g.
 capped_octahedron = octahedral plus one vertex).
+
+A handful of templates (currently l_shaped, fac_trivacant_octahedral,
+snub_disphenoid, bicapped_square_antiprismatic, hexagonal_antiprismatic,
+truncated_tetrahedral) are instead sourced from cosymlib/SHAPE 2.1's
+published reference structures, converted to this module's metal-at-origin
+convention (their central-atom point subtracted out, since cosymlib
+centers on the ligand+metal centroid instead -- see the coordgeo/Q-Shape
+methodology discussion for why coordgeo uses the former). Where a named
+shape has multiple published variants (e.g. an exact-Johnson-solid version
+vs. a "spherized" alternative), only the equal-edge-length one is
+included -- never both, to keep the "one template per name" mapping in
+GEOMETRY_BY_NAME unambiguous.
 """
 from __future__ import annotations
 
@@ -88,6 +100,9 @@ def _raw_geometries() -> Dict[int, List[Template]]:
             [np.sin(np.radians(54.75)), 0, np.cos(np.radians(54.75))],
             [-np.sin(np.radians(54.75)), 0, np.cos(np.radians(54.75))],
         ])),
+        # L-shaped (tetravacant octahedron, 90 degrees between ligands),
+        # per cosymlib/SHAPE 2.1's vOC-2 reference structure.
+        ("l_shaped", np.array([[1, 0, 0], [0, 1, 0]], dtype=float)),
     ]
 
     # ---------------------------------------------------------------- CN=3
@@ -98,6 +113,12 @@ def _raw_geometries() -> Dict[int, List[Template]]:
             for a in (0, 2 * np.pi / 3, 4 * np.pi / 3)
         ])),
         ("t_shaped", np.array([[1, 0, 0], [-1, 0, 0], [0, 1, 0]], dtype=float)),
+        # fac-trivacant octahedron: the 3 mutually-cis vertices of an
+        # octahedron (the coordinate axes), per cosymlib/SHAPE 2.1's
+        # fac-vOC-3 reference structure. Distinct from trigonal_pyramidal
+        # (that one is a vacant tetrahedron, 109.47 degree angles; this one
+        # is 90 degrees, derived from the octahedron instead).
+        ("fac_trivacant_octahedral", np.array([[1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=float)),
     ]
 
     # ---------------------------------------------------------------- CN=4
@@ -205,6 +226,18 @@ def _raw_geometries() -> Dict[int, List[Template]]:
                 [1.3 * np.cos(np.radians(180)), 1.3 * np.sin(np.radians(180)), 0],
             ], dtype=float),
         ])),
+        # Johnson solid J84 (D2d) -- equal edge lengths by construction.
+        # Vertices per cosymlib/SHAPE 2.1's JSD-8 reference structure.
+        ("snub_disphenoid", np.array([
+            [-0.652225622594, 0.000000000000, -1.022598826988],
+            [0.652225622594, 0.000000000000, -1.022598826988],
+            [0.840828401428, 0.000000000000, 0.268145244516],
+            [-0.840828401428, 0.000000000000, 0.268145244516],
+            [0.000000000000, -0.652225622594, 1.022598102293],
+            [0.000000000000, 0.652225622594, 1.022598102293],
+            [0.000000000000, -0.840828401428, -0.268144664760],
+            [0.000000000000, 0.840828401428, -0.268144664760],
+        ], dtype=float)),
     ]
 
     # ---------------------------------------------------------------- CN=9
@@ -245,6 +278,21 @@ def _raw_geometries() -> Dict[int, List[Template]]:
             ], dtype=float),
             [[0, 0, 1.6], [0, 0, -1.6]],
         ])),
+        # Johnson solid J17 (gyroelongated square bipyramid, D4d) -- equal
+        # edge lengths by construction. Vertices per cosymlib/SHAPE 2.1's
+        # JBCSAPR-10 reference structure.
+        ("bicapped_square_antiprismatic", np.array([
+            [0.831394933130, 0.000000000000, 0.494350384928],
+            [0.587884995060, 0.587884995060, -0.494350384928],
+            [0.000000000000, 0.831394933130, 0.494350384928],
+            [-0.587884995060, 0.587884995060, -0.494350384928],
+            [-0.831394933130, 0.000000000000, 0.494350384928],
+            [-0.587884995060, -0.587884995060, -0.494350384928],
+            [-0.000000000000, -0.831394933130, 0.494350384928],
+            [0.587884995060, -0.587884995060, -0.494350384928],
+            [0.000000000000, 0.000000000000, 1.325745318058],
+            [0.000000000000, 0.000000000000, -1.325745318058],
+        ], dtype=float)),
     ]
 
     # --------------------------------------------------------------- CN=11
@@ -280,6 +328,38 @@ def _raw_geometries() -> Dict[int, List[Template]]:
             _ring(6, z=0.8, phase=0.0),
             _ring(6, z=-0.8, phase=0.0),
         ])),
+        # Uniform (equal-edge-length) antiprism, D6d. Vertices per
+        # cosymlib/SHAPE 2.1's HAPR-12 reference structure.
+        ("hexagonal_antiprismatic", np.array([
+            [0.828737481092, 0.478471807796, -0.409380324284],
+            [0.000000000000, 0.956943615592, -0.409380324284],
+            [-0.828737481092, 0.478471807796, -0.409380324284],
+            [-0.828737481092, -0.478471807796, -0.409380324284],
+            [-0.000000000000, -0.956943615592, -0.409380324284],
+            [0.828737481092, -0.478471807796, -0.409380324284],
+            [0.956943615592, -0.000000000000, 0.409380324284],
+            [0.478471807796, 0.828737481092, 0.409380324284],
+            [-0.478471807796, 0.828737481092, 0.409380324284],
+            [-0.956943615592, 0.000000000000, 0.409380324284],
+            [-0.478471807796, -0.828737481092, 0.409380324284],
+            [0.478471807796, -0.828737481092, 0.409380324284],
+        ], dtype=float)),
+        # Archimedean solid (Td) -- equal edge lengths by construction.
+        # Vertices per cosymlib/SHAPE 2.1's TT-12 reference structure.
+        ("truncated_tetrahedral", np.array([
+            [0.000000000000, 0.443812682299, -0.941468871691],
+            [0.443812682299, 0.887625364599, -0.313822957230],
+            [-0.443812682299, 0.887625364599, -0.313822957230],
+            [-0.000000000000, -0.443812682299, -0.941468871691],
+            [0.443812682299, -0.887625364599, -0.313822957230],
+            [-0.443812682299, -0.887625364599, -0.313822957230],
+            [0.887625364599, 0.443812682299, 0.313822957230],
+            [0.887625364599, -0.443812682299, 0.313822957230],
+            [0.443812682299, 0.000000000000, 0.941468871691],
+            [-0.887625364599, 0.443812682299, 0.313822957230],
+            [-0.887625364599, -0.443812682299, 0.313822957230],
+            [-0.443812682299, 0.000000000000, 0.941468871691],
+        ], dtype=float)),
     ]
 
     return geoms

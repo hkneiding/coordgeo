@@ -11,3 +11,4 @@ venv/
 .DS_Store
 main.py
 .claude/
+*.xyz
