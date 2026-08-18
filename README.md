@@ -179,13 +179,13 @@ metal) is unaffected. This applies universally: fixed or automatic
 
 | CN | Geometries |
 |----|------------|
-| 2  | linear, bent, L-shaped |
+| 2  | linear, V-shaped, L-shaped |
 | 3  | trigonal planar, trigonal pyramidal, T-shaped, fac-trivacant octahedral |
 | 4  | tetrahedral, square planar, seesaw, vacant trigonal bipyramidal |
 | 5  | trigonal bipyramidal, square pyramidal, pentagonal planar, vacant octahedral |
 | 6  | octahedral, trigonal prismatic, pentagonal pyramidal, hexagonal planar |
 | 7  | pentagonal bipyramidal, capped octahedron, capped trigonal prism, hexagonal pyramidal |
-| 8  | cubic, square antiprismatic, hexagonal bipyramidal, dodecahedral (bisdisphenoid), bicapped trigonal prismatic, snub disphenoid |
+| 8  | cubic, square antiprismatic, hexagonal bipyramidal, dodecahedral (bisdisphenoid), biaugmented trigonal prismatic, snub disphenoid |
 | 9  | tricapped trigonal prismatic, capped square antiprismatic, heptagonal bipyramidal |
 | 10 | pentagonal prismatic, pentagonal antiprismatic, bicapped cube, bicapped square antiprismatic |
 | 11 | capped pentagonal prismatic, capped pentagonal antiprismatic |

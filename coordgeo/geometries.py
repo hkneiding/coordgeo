@@ -96,7 +96,10 @@ def _raw_geometries() -> Dict[int, List[Template]]:
     # ---------------------------------------------------------------- CN=2
     geoms[2] = [
         ("linear", np.array([[1, 0, 0], [-1, 0, 0]], dtype=float)),
-        ("bent", np.array([
+        # Vacant tetrahedron (109.47 degrees between ligands). Named
+        # v_shaped rather than "bent" to match the "V-shape" terminology
+        # used in the coordination chemistry literature for this CN=2 shape.
+        ("v_shaped", np.array([
             [np.sin(np.radians(54.75)), 0, np.cos(np.radians(54.75))],
             [-np.sin(np.radians(54.75)), 0, np.cos(np.radians(54.75))],
         ])),
@@ -217,8 +220,12 @@ def _raw_geometries() -> Dict[int, List[Template]]:
             [-0.628, 0.628, -0.460], [-0.628, -0.628, -0.460],
         ], dtype=float)),
         # Trigonal prism with two of its three rectangular faces capped
-        # (face centers sit at 60 degree intervals; two of the three are used).
-        ("bicapped_trigonal_prismatic", np.vstack([
+        # (face centers sit at 60 degree intervals; two of the three are
+        # used). Named biaugmented (not bicapped) to match SHAPE 2.1's own
+        # terminology for this shape (BTPR-8 / JBTP-8, "Biaugmented
+        # Trigonal Prism") -- unlike bicapped_cube/bicapped_square_antiprismatic
+        # (CN=10), where SHAPE itself does use "bicapped".
+        ("biaugmented_trigonal_prismatic", np.vstack([
             _ring(3, z=0.8, phase=0.0),
             _ring(3, z=-0.8, phase=0.0),
             np.array([
