@@ -12,14 +12,14 @@ and ranks idealized reference geometries for that CN (e.g. CN=4 ->
 tetrahedral vs. square planar vs. seesaw) by a **continuous shape measure
 (CShM)**: 0 = perfect match, larger = worse. Supported CN: **2-12**.
 
-The method mirrors and reimplements the SHAPE program in Python, following
-the continuous shape measures formalism (see [References](#references)):
-normalize the ligand positions and an idealized reference polyhedron to the
-same size, find the rotation and ligand-to-vertex assignment minimizing the
-summed squared deviation, and report the residual as a 0-100 measure. CN <=
-7 uses exact brute-force search over every permutation; CN > 7 uses a
-Hungarian-algorithm-based iterative closest point (ICP) search instead,
-since N! is no longer tractable (see `coordgeo/matcher.py`).
+The method mirrors the SHAPE program's approach (see
+[References](#references)): normalize the ligand positions and an idealized
+reference polyhedron to the same size, find the rotation and
+ligand-to-vertex assignment minimizing the summed squared deviation, and
+report the residual as a 0-100 measure. CN <= 7 uses exact brute-force
+search over every permutation; CN > 7 uses a Hungarian-algorithm-based
+iterative closest point (ICP) search instead, since N! is no longer
+tractable (see `coordgeo/matcher.py`).
 
 ## Install
 
@@ -84,9 +84,9 @@ result = coordgeo.analyze(Atoms(...), cutoff=2.6)
 If you already have specific geometries in mind rather than wanting an
 open-ended search, use `analyze_by_geometry()` to test exactly those
 (Python-API only) -- each name is resolved to its own CN and matched
-against that many closest atoms by plain distance; there's no
-cutoff/tolerance/window here at all, and unlike `window`, no plausibility
-check either, since you're specifying the hypothesis directly:
+against that many closest atoms by plain distance, with no
+cutoff/tolerance/window and no plausibility check, since you're specifying
+the hypothesis directly:
 
 ```python
 result = coordgeo.analyze_by_geometry("complex.xyz", geometries=["square_planar", "octahedral"])
@@ -97,21 +97,6 @@ A name that can't be evaluated (unknown, or needs more atoms than the
 structure has) is skipped with a `UserWarning` rather than aborting the
 rest; it only raises if *none* of the requested geometries could be
 evaluated.
-
-Lower-level building blocks are also available:
-
-```python
-from coordgeo import load_xyz, structure_from_ase_atoms, find_metal_center, get_neighbors, identify_geometry
-
-structure = load_xyz("complex.xyz")
-# structure = structure_from_ase_atoms(atoms)             # or from an ase.Atoms object
-metal_idx = find_metal_center(structure)                 # auto-detect
-neighbors = get_neighbors(structure, metal_idx)           # auto cutoff from covalent radii
-
-import numpy as np
-ligand_points = np.array([n.vector for n in neighbors])  # metal at origin
-matches = identify_geometry(ligand_points)                # ranked GeometryMatch list
-```
 
 ## Exploring nearby coordination numbers (`window`)
 
@@ -124,21 +109,19 @@ tested (base CN +/- N) into one best-first table.
 
 - **`window=0`** (default) reproduces the original single-CN behavior exactly.
 - A neighbor is only **removable** if there's a genuine distance gap (`>
-  tolerance`) between it and the kept core -- this stops e.g. a uniformly
-  distorted octahedron from being reported as `vacant_octahedral` just
-  because one ligand happens to be nominally furthest.
+  tolerance`) between it and the kept core, so a uniformly distorted
+  octahedron isn't reported as `vacant_octahedral` just because one
+  ligand happens to be nominally furthest.
 - An atom is only **addable** if it's within 1.5x the pairwise
-  covalent-radius-sum distance for that atom pair -- this stops a large
-  `window` on a sparse structure from reaching for chemically implausible,
-  far-away atoms.
+  covalent-radius-sum distance for that pair, so a large `window` on a
+  sparse structure can't reach for chemically implausible, far-away atoms.
 - If the base (cutoff-defined) CN itself isn't supported, `analyze()`
-  still doesn't raise as long as some CN within the window is; it only
-  raises once none of the CNs tested are.
+  still succeeds as long as some CN within the window is; it only raises
+  once none of the CNs tested are.
 - Raw shape measures aren't fully comparable across *different* CN --
-  fewer points are inherently easier to fit well, so a lower-CN row
-  scoring near the top isn't automatically the "more correct" answer;
-  check it's a genuine, chemically sensible subset before trusting it
-  over a higher-CN candidate.
+  fewer points fit more easily, so a top-ranked lower-CN row isn't
+  automatically the "more correct" answer; check it's a chemically
+  sensible subset before trusting it over a higher-CN candidate.
 
 ```python
 result = coordgeo.analyze("complex.xyz", cutoff=2.5, window=2)
@@ -159,7 +142,7 @@ neighbor. **By default** (`cutoff` not given), the cutoff is computed per
 neighbor as `covalent_radius(metal) + covalent_radius(neighbor) +
 tolerance` (tolerance defaults to 0.4 A), using the tabulated radii in
 `coordgeo/radii.py` (Cordero et al., see [References](#references)) — the
-same kind of sum-of-covalent-radii-plus-tolerance heuristic used by
+same sum-of-covalent-radii-plus-tolerance heuristic used by
 OpenBabel/pymatgen. If an atom close enough to matter has no tabulated
 radius, a `ValueError` is raised rather than guessing. **Pass `cutoff`
 explicitly** instead for a pure fixed distance (no chemistry) — a common
@@ -167,12 +150,12 @@ starting point is ~2.4-2.8 A for first-row transition metals, larger for
 heavier metals/longer bonds.
 
 **Hydrogens are filtered separately, everywhere.** A candidate hydrogen is
-only ever treated as a coordinating neighbor if it has no closer covalent
-bond to some other atom -- a hydrogen already bonded to a carbon (e.g. an
-agostic C-H...M interaction) is excluded regardless of how close it looks
-to the metal, since it's the covalent partner of that other atom, not a
-free/candidate hydride. A genuine terminal hydride (bonded only to the
-metal) is unaffected. This applies universally: fixed or automatic
+only treated as a coordinating neighbor if it has no closer covalent bond
+to some other atom -- a hydrogen already bonded to a carbon (e.g. an
+agostic C-H...M interaction) is excluded regardless of its proximity to
+the metal, since it's already the covalent partner of that other atom,
+not a free/candidate hydride. A genuine terminal hydride (bonded only to
+the metal) is unaffected. This applies universally: fixed or automatic
 `cutoff`, `window`, and `analyze_by_geometry()` alike.
 
 ## Reference geometries included
@@ -191,20 +174,24 @@ metal) is unaffected. This applies universally: fixed or automatic
 | 11 | capped pentagonal prismatic, capped pentagonal antiprismatic |
 | 12 | icosahedral, cuboctahedron, hexagonal prismatic, hexagonal antiprismatic, truncated tetrahedral |
 
-These are idealized templates, not fitted to any real complex, and not
-the exhaustive SHAPE reference set (which includes further Johnson-solid
-and low-symmetry variants, especially at CN 8-12). Many higher-CN
-templates are built systematically, per standard nomenclature: a "vacant"
-polyhedron removes a vertex from a larger one, a "capped" one adds one at
-a face center. A few (l_shaped, fac_trivacant_octahedral, snub_disphenoid,
-bicapped_square_antiprismatic, hexagonal_antiprismatic,
-truncated_tetrahedral) are instead sourced directly from cosymlib/SHAPE
-2.1's published reference structures and converted to coordgeo's
-metal-at-origin convention (see [References](#references) and the
-methodology note in `coordgeo/geometries.py`). Where a shape has multiple
-published variants, only the equal-edge-length one is included, never
-both. Adding a geometry is just adding a `(name, Nx3 array)` tuple in
-`coordgeo/geometries.py`.
+These are idealized templates, not fitted to any real complex, and not the
+exhaustive SHAPE reference set (which includes further Johnson-solid and
+low-symmetry variants, especially at CN 8-12). Naming follows standard
+nomenclature: a "vacant" polyhedron removes a vertex from a larger one, a
+"capped"/"biaugmented" one adds one/two at a face center. Most vertex
+coordinates come from cosymlib/SHAPE 2.1's published reference structures,
+converted to coordgeo's metal-at-origin convention (see
+[References](#references) and `coordgeo/geometries.py`); the exceptions
+are shapes exact by construction regardless of source (flat regular
+polygons, the Platonic solids, cuboctahedron, and others with only one
+possible angle). Where SHAPE lists both an equal-M-L-bond-length
+("ideal") reference and an equal-edge-length Johnson-solid one for the
+same shape (e.g. `trigonal_bipyramidal`, `pentagonal_pyramidal`,
+`biaugmented_trigonal_prismatic`), coordgeo includes only the
+equal-bond-length version, matching the CShM literature's convention;
+some shapes (e.g. `snub_disphenoid`, `bicapped_cube`) exist only as a
+Johnson solid. Adding a geometry is just adding a `(name, Nx3 array)`
+tuple in `coordgeo/geometries.py`.
 
 ## Limitations
 
@@ -226,9 +213,8 @@ SHAPE program:
 - Alvarez, S.; Alemany, P.; Casanova, D.; Cirera, J.; Llunell, M.; Avnir, D. *Shape Maps and Polyhedral Interconversion Paths in Transition Metal Chemistry.* Coord. Chem. Rev. **2005**, 249, 1693–1708.
 - Llunell, M.; Casanova, D.; Cirera, J.; Alemany, P.; Alvarez, S. *SHAPE: Program for the Stereochemical Analysis of Molecular Fragments by Means of Continuous Shape Measures and Associated Tools*, v2.1; Universitat de Barcelona, 2013.
 
-A Python library implementing a similar continuous symmetry/shape measures
-approach (some of coordgeo's reference geometry vertex data traces back to
-this library -- see below):
+A Python library implementing a similar approach (some of coordgeo's
+reference geometry vertex data traces back to it -- see below):
 
 - Alemany, P.; Bernuz, E.; Carreras, A.; Llunell, M. *Cosymlib: A Python Library for Continuous Symmetry Measures*, v0.9.5; Zenodo, **2021**. https://doi.org/10.5281/zenodo.4925767
 
@@ -241,10 +227,9 @@ cutoff radius works" above) are from:
 
 - Cordero, B.; Gómez, V.; Platero-Prats, A. E.; Revés, M.; Echeverría, J.; Cremades, E.; Barragán, F.; Alvarez, S. *Covalent Radii Revisited.* Dalton Trans. **2008**, 2832–2838.
 
-Six reference geometry templates (`l_shaped`, `fac_trivacant_octahedral`,
-`snub_disphenoid`, `bicapped_square_antiprismatic`,
-`hexagonal_antiprismatic`, `truncated_tetrahedral`) use vertex coordinates
-sourced from cosymlib's published reference structures via Q-Shape's
-implementation, converted to coordgeo's metal-at-origin convention:
+Most reference geometry templates use vertex coordinates sourced from
+cosymlib's published reference structures via Q-Shape's implementation
+(see the module docstring in `coordgeo/geometries.py` for the exceptions
+that are exact by construction instead):
 
 - Castro Silva Junior, H. *Q-Shape* reference geometry definitions (cosymlib-derived). `src/constants/referenceGeometries/index.js`. https://github.com/HenriqueCSJ/q-shape/blob/main/src/constants/referenceGeometries/index.js
