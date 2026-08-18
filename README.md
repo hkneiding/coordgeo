@@ -37,10 +37,10 @@ coordgeo examples/octahedral_example.xyz
 
 ```
 Candidate geometries for Fe (atom #1) (lower shape measure = better match, 0 = perfect; sorted best first):
-  CN=6   octahedral             shape measure =   0.00  <-- best match
-  CN=6   trigonal_prismatic     shape measure =  17.43
-  CN=6   pentagonal_pyramidal   shape measure =  31.54
-  CN=6   hexagonal_planar       shape measure =  36.70
+  CN=6   octahedral                       Oh   shape measure =   0.00
+  CN=6   trigonal_prismatic               D3h  shape measure =  17.50
+  CN=6   pentagonal_pyramidal             C5v  shape measure =  35.19
+  CN=6   hexagonal_planar                 D6h  shape measure =  36.70
 ```
 
 Options:
@@ -67,7 +67,7 @@ print(result.best_match().name)        # e.g. "square_planar"
 print(result.best_match().measure)     # e.g. 0.05  (0 = perfect match)
 
 for match in result.matches:
-    print(match.coordination_number, match.name, match.measure)
+    print(match.coordination_number, match.name, match.point_group, match.measure)
 
 print(result.summary())                # human-readable report
 ```

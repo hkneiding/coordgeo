@@ -11,7 +11,7 @@ import numpy as np
 from .elements import is_metal
 from .io import Atom, Structure, load_xyz, structure_from_ase_atoms
 from .matcher import EXACT_PERMUTATION_MAX_N, GeometryMatch, identify_geometry, shape_measure
-from .geometries import MAX_SUPPORTED_CN, MIN_SUPPORTED_CN, get_geometry_by_name
+from .geometries import MAX_SUPPORTED_CN, MIN_SUPPORTED_CN, POINT_GROUPS, get_geometry_by_name
 from .radii import COVALENT_RADII, covalent_radius
 
 if TYPE_CHECKING:
@@ -99,9 +99,9 @@ class AnalysisResult:
         str
             A header naming the metal center, followed by one row per
             candidate geometry tested (across every coordination number in
-            the window, if any) with its CN and shape measure, sorted best
-            (lowest measure) first -- or a note that none are available if
-            `matches` is empty.
+            the window, if any) with its CN, idealized point group, and
+            shape measure, sorted best (lowest measure) first -- or a note
+            that none are available if `matches` is empty.
 
         Raises
         ------
@@ -126,10 +126,9 @@ class AnalysisResult:
         else:
             shown = self.matches if top_n is None else self.matches[:top_n]
             for m in shown:
-                marker = "  <-- best match" if m is self.matches[0] else ""
                 lines.append(
-                    f"  CN={m.coordination_number:<3d} {m.name:<22s} "
-                    f"shape measure = {m.measure:6.2f}{marker}"
+                    f"  CN={m.coordination_number:<3d} {m.name:<32s} {m.point_group:<5s}"
+                    f"shape measure = {m.measure:6.2f}"
                 )
         return "\n".join(lines)
 
@@ -569,9 +568,13 @@ def _score_named_geometries(
         except ValueError as exc:
             warnings.warn(f"Skipping geometry {name!r}: {exc}", stacklevel=2)
             continue
-        scored.append(
-            (GeometryMatch(name=name, coordination_number=cn, measure=measure, permutation=perm), variant)
-        )
+        scored.append((
+            GeometryMatch(
+                name=name, coordination_number=cn, measure=measure, permutation=perm,
+                point_group=POINT_GROUPS[name],
+            ),
+            variant,
+        ))
 
     if not scored:
         raise ValueError(

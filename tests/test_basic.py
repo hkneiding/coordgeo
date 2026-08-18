@@ -441,10 +441,22 @@ def test_summary_top_n_rejects_non_positive_values():
 
 def test_summary_candidate_table_shows_cn_and_is_sorted_best_first():
     xyz = os.path.join(EXAMPLES, "octahedral_example.xyz")
-    summary = coordgeo.analyze(xyz, cutoff=2.5).summary()
+    result = coordgeo.analyze(xyz, cutoff=2.5)
+    summary = result.summary()
     candidate_lines = [ln for ln in summary.splitlines() if ln.strip().startswith("CN=")]
     assert candidate_lines[0].startswith("  CN=6 ")
-    assert candidate_lines[0].endswith("<-- best match")
+    assert candidate_lines == sorted(
+        candidate_lines, key=lambda ln: float(ln.split("shape measure = ")[1])
+    )
+
+
+def test_summary_candidate_table_shows_point_group():
+    xyz = os.path.join(EXAMPLES, "octahedral_example.xyz")
+    result = coordgeo.analyze(xyz, cutoff=2.5)
+    summary = result.summary()
+    octahedral_line = next(ln for ln in summary.splitlines() if ln.split()[1:2] == ["octahedral"])
+    assert octahedral_line.split()[2] == "Oh"
+    assert all(m.point_group for m in result.matches)
 
 
 def test_get_geometry_by_name_returns_cn_and_template():

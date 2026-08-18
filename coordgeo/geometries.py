@@ -571,6 +571,60 @@ GEOMETRY_BY_NAME: Dict[str, Tuple[int, np.ndarray]] = {
     name: (cn, template) for cn, templates in GEOMETRIES.items() for name, template in templates
 }
 
+# Idealized point group (Schoenflies symbol) of each reference geometry, as
+# tabulated by SHAPE 2.1 / cosymlib (via Q-Shape) -- purely informational
+# metadata for display (see GeometryMatch.point_group), not used in the
+# shape-matching computation itself.
+POINT_GROUPS: Dict[str, str] = {
+    "linear": "D∞h",
+    "v_shaped": "C2v",
+    "l_shaped": "C2v",
+    "trigonal_planar": "D3h",
+    "trigonal_pyramidal": "C3v",
+    "t_shaped": "C2v",
+    "fac_trivacant_octahedral": "C3v",
+    "tetrahedral": "Td",
+    "square_planar": "D4h",
+    "seesaw": "C2v",
+    "vacant_trigonal_bipyramidal": "C3v",
+    "trigonal_bipyramidal": "D3h",
+    "square_pyramidal": "C4v",
+    "pentagonal_planar": "D5h",
+    "vacant_octahedral": "C4v",
+    "octahedral": "Oh",
+    "trigonal_prismatic": "D3h",
+    "pentagonal_pyramidal": "C5v",
+    "hexagonal_planar": "D6h",
+    "pentagonal_bipyramidal": "D5h",
+    "capped_octahedron": "C3v",
+    "capped_trigonal_prism": "C2v",
+    "hexagonal_pyramidal": "C6v",
+    "cubic": "Oh",
+    "square_antiprismatic": "D4d",
+    "hexagonal_bipyramidal": "D6h",
+    "dodecahedral": "D2d",
+    "biaugmented_trigonal_prismatic": "C2v",
+    "snub_disphenoid": "D2d",
+    "tricapped_trigonal_prismatic": "D3h",
+    "capped_square_antiprismatic": "C4v",
+    "heptagonal_bipyramidal": "D7h",
+    "pentagonal_prismatic": "D5h",
+    "pentagonal_antiprismatic": "D5d",
+    "bicapped_cube": "D4h",
+    "bicapped_square_antiprismatic": "D4d",
+    "capped_pentagonal_prismatic": "C5v",
+    "capped_pentagonal_antiprismatic": "C5v",
+    "icosahedral": "Ih",
+    "cuboctahedron": "Oh",
+    "hexagonal_prismatic": "D6h",
+    "hexagonal_antiprismatic": "D6d",
+    "truncated_tetrahedral": "Td",
+}
+
+assert set(POINT_GROUPS) == set(GEOMETRY_BY_NAME), (
+    "POINT_GROUPS must have exactly one entry per geometry in GEOMETRY_BY_NAME."
+)
+
 
 def get_geometry_by_name(name: str) -> Tuple[int, np.ndarray]:
     """Look up a named reference geometry's coordination number and template.

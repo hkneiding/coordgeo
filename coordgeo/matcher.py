@@ -36,7 +36,7 @@ from typing import List, Optional, Tuple
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
-from .geometries import GEOMETRIES
+from .geometries import GEOMETRIES, POINT_GROUPS
 
 # Coordination numbers up to and including this size use the exact
 # brute-force permutation search (N!). Above it, ligand-to-vertex
@@ -290,6 +290,7 @@ class GeometryMatch:
     coordination_number: int
     measure: float  # 0 (perfect) to 100 (worst); lower is better
     permutation: Tuple[int, ...]  # ligand index i -> template vertex permutation[i]
+    point_group: str = ""  # idealized Schoenflies point group of the reference geometry
 
 
 def identify_geometry(
@@ -330,7 +331,10 @@ def identify_geometry(
     results: List[GeometryMatch] = []
     for name, template in GEOMETRIES[N]:
         measure, perm = shape_measure(ligand_points, template, rng=rng)
-        results.append(GeometryMatch(name=name, coordination_number=N, measure=measure, permutation=perm))
+        results.append(GeometryMatch(
+            name=name, coordination_number=N, measure=measure, permutation=perm,
+            point_group=POINT_GROUPS[name],
+        ))
 
     results.sort(key=lambda m: m.measure)
     return results
