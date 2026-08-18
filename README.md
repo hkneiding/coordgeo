@@ -51,6 +51,7 @@ Options:
 - `--metal-symbol` / `--metal-index`: pick the metal center explicitly (by symbol or 1-based atom index) instead of auto-detecting it.
 - `--top N`: only show the top N rows of the candidate geometry table.
 - `--seed N`: seed for the randomized search used at CN > 7, for reproducible results.
+- `--version`: print the installed coordgeo version and exit.
 
 ## Python API
 

@@ -102,7 +102,16 @@ class AnalysisResult:
             the window, if any) with its CN and shape measure, sorted best
             (lowest measure) first -- or a note that none are available if
             `matches` is empty.
+
+        Raises
+        ------
+        ValueError
+            If `top_n` is given and is not a positive integer (0 or
+            negative `top_n` would otherwise silently produce an empty or
+            slice-from-the-end table).
         """
+        if top_n is not None and top_n < 1:
+            raise ValueError(f"top_n must be a positive integer, got {top_n}.")
         header = (
             f"Candidate geometries for {self.metal_symbol} (atom #{self.metal_index + 1}) "
             f"(lower shape measure = better match, 0 = perfect; sorted best first):"
@@ -171,7 +180,7 @@ def find_metal_center(
                 f"{len(structure.atoms)} atoms."
             )
         actual_symbol = structure.atoms[metal_index].symbol
-        if metal_symbol is not None and actual_symbol != metal_symbol:
+        if metal_symbol is not None and actual_symbol.strip().capitalize() != metal_symbol.strip().capitalize():
             raise ValueError(
                 f"metal_index {metal_index} refers to a '{actual_symbol}' atom, which "
                 f"does not match metal_symbol='{metal_symbol}'. Pass only one of "
@@ -180,7 +189,8 @@ def find_metal_center(
         return metal_index
 
     if metal_symbol is not None:
-        candidates = [a.index for a in structure.atoms if a.symbol == metal_symbol]
+        normalized_target = metal_symbol.strip().capitalize()
+        candidates = [a.index for a in structure.atoms if a.symbol.strip().capitalize() == normalized_target]
         if not candidates:
             raise ValueError(f"No atom with symbol '{metal_symbol}' found in structure.")
         if len(candidates) > 1:
@@ -753,7 +763,7 @@ def analyze(
 
         variant_cn = len(variant)
         tested_cns.append(variant_cn)
-        if variant_cn >= 2 and MIN_SUPPORTED_CN <= variant_cn <= MAX_SUPPORTED_CN:
+        if MIN_SUPPORTED_CN <= variant_cn <= MAX_SUPPORTED_CN:
             ligand_points = np.array([n.vector for n in variant])
             matches.extend(identify_geometry(ligand_points, seed=seed))
 

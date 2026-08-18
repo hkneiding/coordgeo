@@ -8,6 +8,33 @@ from . import __version__
 from .core import DEFAULT_TOLERANCE, analyze
 
 
+def _positive_int(value: str) -> int:
+    """Parse a CLI argument as a positive (>= 1) integer, for use as an argparse `type`.
+
+    Parameters
+    ----------
+    value : str
+        Raw argument string from argparse.
+
+    Returns
+    -------
+    int
+        `int(value)`.
+
+    Raises
+    ------
+    argparse.ArgumentTypeError
+        If `value` isn't an integer, or is less than 1.
+    """
+    try:
+        parsed = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{value!r} is not an integer")
+    if parsed < 1:
+        raise argparse.ArgumentTypeError(f"must be a positive integer, got {parsed}")
+    return parsed
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Build the coordgeo command-line argument parser.
 
@@ -62,7 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--top", type=int, default=None,
+        "--top", type=_positive_int, default=None,
         help="Only show the top N rows of the candidate geometry table (default: show all tested).",
     )
     parser.add_argument(

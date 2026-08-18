@@ -102,6 +102,15 @@ def test_cli_window_defaults_to_zero(capsys):
     assert captured_with_flag.out == captured_without_flag.out
 
 
+def test_cli_top_option_rejects_non_positive_values(capsys):
+    xyz = os.path.join(EXAMPLES, "octahedral_example.xyz")
+    with pytest.raises(SystemExit) as exc_info:
+        main([xyz, "--cutoff", "2.5", "--top", "0"])
+    assert exc_info.value.code == 2
+    captured = capsys.readouterr()
+    assert "positive integer" in captured.err
+
+
 def test_cli_version_flag(capsys):
     with pytest.raises(SystemExit) as exc_info:
         main(["--version"])

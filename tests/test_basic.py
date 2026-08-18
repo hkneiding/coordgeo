@@ -77,6 +77,22 @@ def test_conflicting_metal_symbol_and_index_raises():
         )
 
 
+def test_metal_symbol_matching_is_case_and_whitespace_insensitive():
+    # Matches the normalization already used by auto-detection (is_metal)
+    # and covalent_radius() -- an explicit metal_symbol shouldn't be
+    # stricter than either of those.
+    result = coordgeo.analyze(
+        os.path.join(EXAMPLES, "octahedral_example.xyz"), cutoff=2.5, metal_symbol=" fe "
+    )
+    assert result.metal_symbol == "Fe"
+
+    result = coordgeo.analyze(
+        os.path.join(EXAMPLES, "octahedral_example.xyz"), cutoff=2.5,
+        metal_symbol="FE", metal_index=0,
+    )
+    assert result.metal_symbol == "Fe"
+
+
 def test_unsupported_coordination_number_raises(tmp_path):
     # 13 neighbors -> CN=13, one above MAX_SUPPORTED_CN (12).
     rng = np.random.default_rng(0)
@@ -412,6 +428,15 @@ def test_summary_header_includes_metal_center_and_no_other_sections():
     assert "Cutoff" not in summary
     assert "Window" not in summary
     assert all(ln == lines[0] or ln.strip().startswith("CN=") for ln in lines)
+
+
+def test_summary_top_n_rejects_non_positive_values():
+    xyz = os.path.join(EXAMPLES, "octahedral_example.xyz")
+    result = coordgeo.analyze(xyz, cutoff=2.5)
+    with pytest.raises(ValueError, match="positive integer"):
+        result.summary(top_n=0)
+    with pytest.raises(ValueError, match="positive integer"):
+        result.summary(top_n=-1)
 
 
 def test_summary_candidate_table_shows_cn_and_is_sorted_best_first():
