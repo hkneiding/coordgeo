@@ -796,16 +796,19 @@ def analyze(
 
     if not matches:
         if window == 0:
-            cn_desc = f"Coordination number {cn}"
+            reason = f"Coordination number {cn}, found within the {cutoff_desc}, is not supported"
         else:
-            cn_desc = (
-                f"None of the coordination numbers tested ({min(tested_cns)}-{max(tested_cns)}, "
-                f"base CN={cn} +/- window={window})"
+            # Deliberately phrased as "... are supported" (not "... are not
+            # supported") -- "None of X is not supported" would be a double
+            # negative that actually means the opposite of what's intended.
+            reason = (
+                f"None of the coordination numbers tested within the {cutoff_desc} "
+                f"({min(tested_cns)}-{max(tested_cns)}, base CN={cn} +/- window={window}) "
+                f"are supported"
             )
         raise ValueError(
-            f"{cn_desc} found within the {cutoff_desc} is not supported; reference "
-            f"geometries are only available for CN {MIN_SUPPORTED_CN}-{MAX_SUPPORTED_CN}. "
-            f"Try a different cutoff/tolerance"
+            f"{reason}; reference geometries are only available for CN "
+            f"{MIN_SUPPORTED_CN}-{MAX_SUPPORTED_CN}. Try a different cutoff/tolerance"
             f"{' or a larger window' if window else ''}, or extend "
             f"coordgeo/geometries.py with templates for the CN you need."
         )

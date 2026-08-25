@@ -431,7 +431,7 @@ def test_analyze_window_raises_only_if_nothing_in_window_is_valid():
     with pytest.raises(ValueError, match="not supported"):
         coordgeo.analyze(xyz, cutoff=1.0, window=0)
     # window=1: still nowhere near enough to reach a real ligand (2.10 A away).
-    with pytest.raises(ValueError, match="not supported"):
+    with pytest.raises(ValueError, match="are supported"):
         coordgeo.analyze(xyz, cutoff=1.0, window=1)
 
 
