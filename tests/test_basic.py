@@ -335,6 +335,41 @@ def test_analyze_with_window_pools_matches_across_coordination_numbers(tmp_path)
     assert cn8_best > octahedral.measure
 
 
+def test_analyze_match_neighbors_are_the_scored_atoms():
+    xyz = os.path.join(EXAMPLES, "octahedral_example.xyz")
+    result = coordgeo.analyze(xyz, cutoff=2.5)
+    for m in result.matches:
+        assert len(m.neighbors) == m.coordination_number == 6
+        assert [n.index for n in m.neighbors] == [n.index for n in result.neighbors]
+        assert all(n.symbol == "N" for n in m.neighbors)
+
+
+def test_analyze_window_match_neighbors_differ_by_coordination_number(tmp_path):
+    # Same distorted-octahedron structure as
+    # test_analyze_with_window_pools_matches_across_coordination_numbers:
+    # 5 core N (indices 1-5) + 1 stretched N (index 6) + 2 distant O
+    # (indices 7-8), 0-based.
+    xyz = _octahedral_plus_extras_xyz(tmp_path)
+    result = coordgeo.analyze(xyz, cutoff=2.65, window=2)
+
+    for m in result.matches:
+        assert len(m.neighbors) == m.coordination_number
+
+    cn5 = next(m for m in result.matches if m.coordination_number == 5)
+    cn6 = next(m for m in result.matches if m.coordination_number == 6)
+    cn8 = next(m for m in result.matches if m.coordination_number == 8)
+
+    # CN=5 dropped the genuinely stretched 6th N (index 6) -- only the 5
+    # tightly-clustered core N atoms remain.
+    assert sorted(n.index for n in cn5.neighbors) == [1, 2, 3, 4, 5]
+    assert all(n.symbol == "N" for n in cn5.neighbors)
+    # CN=6 keeps that stretched N too.
+    assert sorted(n.index for n in cn6.neighbors) == [1, 2, 3, 4, 5, 6]
+    # CN=8 additionally pulls in both distant O atoms.
+    assert sorted(n.index for n in cn8.neighbors) == [1, 2, 3, 4, 5, 6, 7, 8]
+    assert sorted(n.symbol for n in cn8.neighbors) == ["N"] * 6 + ["O"] * 2
+
+
 def test_analyze_window_blocks_removal_without_a_distance_gap():
     # octahedral_example.xyz is a *perfectly* idealized octahedron -- all 6
     # Fe-N distances are exactly tied at 2.10 A, so there is no genuine gap
@@ -422,12 +457,49 @@ def test_summary_header_includes_metal_center_and_no_other_sections():
     summary = coordgeo.analyze(xyz, cutoff=2.5).summary()
     lines = summary.splitlines()
     assert lines[0].startswith("Candidate geometries for Fe (atom #1)")
-    # Only the header + one row per candidate -- no separate metal/cutoff/
-    # window/coordination-number/neighbor-list sections.
-    assert "Neighbors:" not in summary
+    # Only the header + one CN row (with its coordinating-atoms sub-line)
+    # per candidate -- no separate metal/cutoff/window sections.
     assert "Cutoff" not in summary
     assert "Window" not in summary
-    assert all(ln == lines[0] or ln.strip().startswith("CN=") for ln in lines)
+    assert all(
+        ln == lines[0] or ln.strip().startswith("CN=") or ln.strip().startswith("coordinating atoms:")
+        for ln in lines
+    )
+
+
+def test_summary_shows_coordinating_atoms_for_each_candidate():
+    xyz = os.path.join(EXAMPLES, "octahedral_example.xyz")
+    result = coordgeo.analyze(xyz, cutoff=2.5)
+    summary = result.summary()
+    lines = summary.splitlines()
+
+    cn_lines = [i for i, ln in enumerate(lines) if ln.strip().startswith("CN=")]
+    assert len(cn_lines) == len(result.matches)
+    # Every CN row is immediately followed by its own coordinating-atoms line.
+    for i in cn_lines:
+        assert lines[i + 1].strip().startswith("coordinating atoms:")
+
+    expected_atoms = ", ".join(f"{n.symbol} #{n.index + 1}" for n in result.matches[0].neighbors)
+    assert expected_atoms in lines[cn_lines[0] + 1]
+    assert expected_atoms == "N #2, N #3, N #4, N #5, N #6, N #7"
+
+
+def test_summary_show_atoms_false_omits_coordinating_atoms_lines():
+    xyz = os.path.join(EXAMPLES, "octahedral_example.xyz")
+    result = coordgeo.analyze(xyz, cutoff=2.5)
+    summary = result.summary(show_atoms=False)
+    lines = summary.splitlines()
+    assert "coordinating atoms:" not in summary
+    candidate_lines = [ln for ln in lines if ln.strip().startswith("CN=")]
+    assert len(candidate_lines) == len(result.matches)
+    # One line per candidate plus the header -- no sub-lines at all.
+    assert len(lines) == len(result.matches) + 1
+
+
+def test_summary_show_atoms_defaults_to_true():
+    xyz = os.path.join(EXAMPLES, "octahedral_example.xyz")
+    result = coordgeo.analyze(xyz, cutoff=2.5)
+    assert result.summary() == result.summary(show_atoms=True)
 
 
 def test_summary_top_n_rejects_non_positive_values():
@@ -493,6 +565,26 @@ def test_analyze_by_geometry_sorts_by_measure_best_first():
     assert result.best_match().name == "square_planar"
     # neighbors/coordination_number reflect the best-scoring requested geometry.
     assert result.coordination_number == 4
+
+
+def test_analyze_by_geometry_match_neighbors_reflect_each_geometrys_own_cn():
+    xyz = os.path.join(EXAMPLES, "octahedral_example.xyz")
+    result = coordgeo.analyze_by_geometry(xyz, geometries=["square_planar", "octahedral"])
+    octahedral = next(m for m in result.matches if m.name == "octahedral")
+    square_planar = next(m for m in result.matches if m.name == "square_planar")
+
+    assert len(octahedral.neighbors) == 6
+    assert len(square_planar.neighbors) == 4
+    assert all(n.symbol == "N" for n in octahedral.neighbors)
+    # Both are the closest-by-distance atoms up to their own CN, drawn from
+    # the same distance-sorted candidate list -- so square_planar's 4 are
+    # exactly octahedral's first 4.
+    assert [n.index for n in square_planar.neighbors] == [n.index for n in octahedral.neighbors[:4]]
+
+    # `AnalysisResult.neighbors` (the best-scoring requested geometry's set)
+    # matches that geometry's own `.neighbors`.
+    best = result.best_match()
+    assert [n.index for n in result.neighbors] == [n.index for n in best.neighbors]
 
 
 def test_analyze_by_geometry_unknown_name_warns_and_raises_if_alone():

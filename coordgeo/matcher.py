@@ -30,13 +30,18 @@ from __future__ import annotations
 
 import itertools
 import math
-from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import List, Optional, TYPE_CHECKING, Tuple
 
 import numpy as np
 from scipy.optimize import linear_sum_assignment
 
 from .geometries import GEOMETRIES, POINT_GROUPS
+
+if TYPE_CHECKING:
+    # Only used for the type hint below -- importing for real would be
+    # circular, since core.py imports GeometryMatch from this module.
+    from .core import Neighbor
 
 # Coordination numbers up to and including this size use the exact
 # brute-force permutation search (N!). Above it, ligand-to-vertex
@@ -291,6 +296,13 @@ class GeometryMatch:
     measure: float  # 0 (perfect) to 100 (worst); lower is better
     permutation: Tuple[int, ...]  # ligand index i -> template vertex permutation[i]
     point_group: str = ""  # idealized Schoenflies point group of the reference geometry
+    # The metal-coordinating atoms this match was scored against. Left empty
+    # by identify_geometry() itself (this module has no notion of atom
+    # identity, only coordinates); core.py's analyze()/analyze_by_geometry()
+    # fill it in afterwards, since a match's neighbor set isn't necessarily
+    # the same across every row (e.g. pooled coordination numbers from
+    # analyze(..., window=...)).
+    neighbors: List["Neighbor"] = field(default_factory=list)
 
 
 def identify_geometry(
@@ -311,7 +323,10 @@ def identify_geometry(
     Returns
     -------
     list of GeometryMatch
-        Sorted best (lowest measure) first.
+        Sorted best (lowest measure) first. `neighbors` is left empty on
+        each one -- this function only sees coordinates, not atom
+        identity; callers that have that (e.g. `core.analyze()`) attach it
+        afterwards.
 
     Raises
     ------

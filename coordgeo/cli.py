@@ -42,8 +42,8 @@ def build_parser() -> argparse.ArgumentParser:
     -------
     argparse.ArgumentParser
         Parser accepting `xyz_file` and the `--cutoff`/`--tolerance`/
-        `--window`/`--metal-symbol`/`--metal-index`/`--top`/`--seed`/
-        `--version` options.
+        `--window`/`--metal-symbol`/`--metal-index`/`--top`/`--no-atoms`/
+        `--seed`/`--version` options.
     """
     parser = argparse.ArgumentParser(
         prog="coordgeo",
@@ -91,6 +91,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--top", type=_positive_int, default=None,
         help="Only show the top N rows of the candidate geometry table (default: show all tested).",
+    )
+    parser.add_argument(
+        "--no-atoms", action="store_true",
+        help="Omit the 'coordinating atoms' sub-line under each candidate row.",
     )
     parser.add_argument(
         "--seed", type=int, default=None,
@@ -144,7 +148,7 @@ def main(argv=None) -> int:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 
-    print(result.summary(top_n=args.top))
+    print(result.summary(top_n=args.top, show_atoms=not args.no_atoms))
     return 0
 
 

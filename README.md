@@ -38,9 +38,13 @@ coordgeo examples/octahedral_example.xyz
 ```
 Candidate geometries for Fe (atom #1) (lower shape measure = better match, 0 = perfect; sorted best first):
   CN=6   octahedral                       Oh   shape measure =   0.00
+      coordinating atoms: N #2, N #3, N #4, N #5, N #6, N #7
   CN=6   trigonal_prismatic               D3h  shape measure =  17.50
+      coordinating atoms: N #2, N #3, N #4, N #5, N #6, N #7
   CN=6   pentagonal_pyramidal             C5v  shape measure =  35.19
+      coordinating atoms: N #2, N #3, N #4, N #5, N #6, N #7
   CN=6   hexagonal_planar                 D6h  shape measure =  36.70
+      coordinating atoms: N #2, N #3, N #4, N #5, N #6, N #7
 ```
 
 Options:
@@ -50,6 +54,7 @@ Options:
 - `--window N`: also consider adding/removing up to N neighbors around the cutoff boundary, pooling ranked candidates across every CN tested (default: 0). See [Exploring nearby coordination numbers](#exploring-nearby-coordination-numbers-window).
 - `--metal-symbol` / `--metal-index`: pick the metal center explicitly (by symbol or 1-based atom index) instead of auto-detecting it.
 - `--top N`: only show the top N rows of the candidate geometry table.
+- `--no-atoms`: omit the "coordinating atoms" sub-line under each row, for a terser report.
 - `--seed N`: seed for the randomized search used at CN > 7, for reproducible results.
 - `--version`: print the installed coordgeo version and exit.
 
@@ -68,9 +73,18 @@ print(result.best_match().measure)     # e.g. 0.05  (0 = perfect match)
 
 for match in result.matches:
     print(match.coordination_number, match.name, match.point_group, match.measure)
+    print([f"{n.symbol}#{n.index + 1}" for n in match.neighbors])  # atoms it was scored against
 
 print(result.summary())                # human-readable report
+# print(result.summary(show_atoms=False))  # terser: drop the coordinating-atoms sub-lines
 ```
+
+Each `Neighbor` (`result.neighbors`, and every match's own `match.neighbors`)
+has `.symbol`, `.index` (0-based), `.distance` (Å from the metal), and
+`.vector` (position relative to the metal). A match's `.neighbors` is the
+exact atom set it was scored against, which can differ between rows when
+`window`/`analyze_by_geometry` pool several coordination numbers together
+(see below).
 
 `analyze()` also accepts an in-memory [ASE](https://wiki.fysik.dtu.dk/ase/)
 `Atoms` object instead of a file path -- Python-API only, since the CLI

@@ -102,6 +102,22 @@ def test_cli_window_defaults_to_zero(capsys):
     assert captured_with_flag.out == captured_without_flag.out
 
 
+def test_cli_no_atoms_flag_omits_coordinating_atoms(capsys):
+    xyz = os.path.join(EXAMPLES, "octahedral_example.xyz")
+    ret = main([xyz, "--cutoff", "2.5", "--no-atoms"])
+    captured = capsys.readouterr()
+    assert ret == 0
+    assert "coordinating atoms:" not in captured.out
+
+
+def test_cli_no_atoms_flag_defaults_to_false(capsys):
+    xyz = os.path.join(EXAMPLES, "octahedral_example.xyz")
+    without_flag = main([xyz, "--cutoff", "2.5"])
+    captured_without_flag = capsys.readouterr()
+    assert without_flag == 0
+    assert "coordinating atoms:" in captured_without_flag.out
+
+
 def test_cli_top_option_rejects_non_positive_values(capsys):
     xyz = os.path.join(EXAMPLES, "octahedral_example.xyz")
     with pytest.raises(SystemExit) as exc_info:

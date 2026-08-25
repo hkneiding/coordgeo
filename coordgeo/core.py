@@ -85,7 +85,7 @@ class AnalysisResult:
         """
         return self.matches[0] if self.matches else None
 
-    def summary(self, top_n: Optional[int] = None) -> str:
+    def summary(self, top_n: Optional[int] = None, show_atoms: bool = True) -> str:
         """Render the ranked candidate geometry table as a human-readable report.
 
         Parameters
@@ -93,6 +93,10 @@ class AnalysisResult:
         top_n : int, optional
             Only include the top `top_n` rows of the table. Defaults to
             showing every candidate tested.
+        show_atoms : bool, default True
+            Whether to include the coordinating-atoms sub-line under each
+            row (see Returns below). Set False for a terser, one-line-per-
+            candidate report.
 
         Returns
         -------
@@ -100,7 +104,11 @@ class AnalysisResult:
             A header naming the metal center, followed by one row per
             candidate geometry tested (across every coordination number in
             the window, if any) with its CN, idealized point group, and
-            shape measure, sorted best (lowest measure) first -- or a note
+            shape measure, sorted best (lowest measure) first. If
+            `show_atoms` is True (the default), each row is followed by a
+            sub-line naming the coordinating atoms it was scored against
+            (element symbol + 1-based atom index; omitted for a match with
+            no `.neighbors` set regardless of `show_atoms`) -- or a note
             that none are available if `matches` is empty.
 
         Raises
@@ -130,6 +138,9 @@ class AnalysisResult:
                     f"  CN={m.coordination_number:<3d} {m.name:<32s} {m.point_group:<5s}"
                     f"shape measure = {m.measure:6.2f}"
                 )
+                if show_atoms and m.neighbors:
+                    atoms = ", ".join(f"{n.symbol} #{n.index + 1}" for n in m.neighbors)
+                    lines.append(f"      coordinating atoms: {atoms}")
         return "\n".join(lines)
 
 
@@ -468,7 +479,12 @@ def analyze_by_geometry(
     AnalysisResult
         `matches` has one GeometryMatch per requested name that could be
         evaluated (fewer than `len(geometries)` if any were skipped),
-        sorted best (lowest measure) first. `neighbors`/`coordination_number`
+        sorted best (lowest measure) first; each match's `.neighbors` is
+        the list of Neighbor it was scored against (the `cn` closest
+        atoms to the metal, per that match's own coordination number --
+        this can differ between matches, since each requested name is
+        resolved to its own CN independently). `neighbors`/
+        `coordination_number` on the returned AnalysisResult itself
         reflect whichever requested geometry scored best; `cutoff` is
         always None and `window` always 0, since neither applies here.
 
@@ -528,9 +544,12 @@ def _score_named_geometries(
     AnalysisResult
         `matches` has one GeometryMatch per requested name that could be
         evaluated (fewer than `len(geometries)` if any were skipped),
-        sorted best (lowest measure) first; `neighbors`/`coordination_number`
-        reflect whichever requested geometry scored best. `cutoff` is
-        always None and `window` always 0 (neither applies here).
+        sorted best (lowest measure) first; each match's `.neighbors` is
+        the list of Neighbor it was scored against (see
+        `analyze_by_geometry`). `neighbors`/`coordination_number` on the
+        returned AnalysisResult itself reflect whichever requested
+        geometry scored best. `cutoff` is always None and `window` always
+        0 (neither applies here).
 
     Warns
     -----
@@ -551,7 +570,7 @@ def _score_named_geometries(
     all_candidates = _all_neighbor_candidates(structure, metal_index)
     rng = np.random.default_rng(seed)
 
-    scored: List[Tuple[GeometryMatch, List[Neighbor]]] = []
+    scored: List[GeometryMatch] = []
     for name in geometries:
         try:
             cn, template = get_geometry_by_name(name)
@@ -568,12 +587,9 @@ def _score_named_geometries(
         except ValueError as exc:
             warnings.warn(f"Skipping geometry {name!r}: {exc}", stacklevel=2)
             continue
-        scored.append((
-            GeometryMatch(
-                name=name, coordination_number=cn, measure=measure, permutation=perm,
-                point_group=POINT_GROUPS[name],
-            ),
-            variant,
+        scored.append(GeometryMatch(
+            name=name, coordination_number=cn, measure=measure, permutation=perm,
+            point_group=POINT_GROUPS[name], neighbors=variant,
         ))
 
     if not scored:
@@ -582,9 +598,9 @@ def _score_named_geometries(
             f"See the warnings above for the reason each one was skipped."
         )
 
-    scored.sort(key=lambda pair: pair[0].measure)
-    matches = [m for m, _ in scored]
-    best_neighbors = scored[0][1]
+    scored.sort(key=lambda m: m.measure)
+    matches = scored
+    best_neighbors = matches[0].neighbors
 
     return AnalysisResult(
         metal_symbol=structure.atoms[metal_index].symbol,
@@ -682,7 +698,12 @@ def analyze(
     -------
     AnalysisResult
         The metal center, its (base/window=0) neighbor list, and the
-        ranked candidate geometries in `matches`.
+        ranked candidate geometries in `matches`. Each match's
+        `.neighbors` is the list of Neighbor it was scored against -- the
+        variant for that match's own coordination number (base CN plus
+        that match's `delta` within `window`), which can differ between
+        matches when `window > 0` pools several coordination numbers
+        together.
 
     Raises
     ------
@@ -768,7 +789,10 @@ def analyze(
         tested_cns.append(variant_cn)
         if MIN_SUPPORTED_CN <= variant_cn <= MAX_SUPPORTED_CN:
             ligand_points = np.array([n.vector for n in variant])
-            matches.extend(identify_geometry(ligand_points, seed=seed))
+            variant_matches = identify_geometry(ligand_points, seed=seed)
+            for m in variant_matches:
+                m.neighbors = variant
+            matches.extend(variant_matches)
 
     if not matches:
         if window == 0:
